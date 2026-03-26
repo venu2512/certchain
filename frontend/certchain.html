@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CertChain — Blockchain Certificate System</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#020408;
+  --bg2:#040810;
+  --panel:rgba(8,16,28,0.85);
+  --panel2:rgba(12,22,38,0.9);
+  --panel3:rgba(16,28,48,0.95);
+  --border:rgba(30,70,120,0.4);
+  --border2:rgba(0,180,255,0.2);
+  --border3:rgba(0,180,255,0.5);
+  --text:#e8f4ff;
+  --text2:#8ab4d4;
+  --text3:#4a7a9e;
+  --text4:#1e3a52;
+  --cyan:#00d4ff;
+  --cyan2:#0099cc;
+  --cyan-glow:rgba(0,212,255,0.25);
+  --amber:#ffaa00;
+  --amber2:#cc8800;
+  --amber-glow:rgba(255,170,0,0.25);
+  --green:#00ff88;
+  --green-glow:rgba(0,255,136,0.2);
+  --red:#ff3366;
+  --red-glow:rgba(255,51,102,0.2);
+  --purple:#7c3aed;
+  --mono:'JetBrains Mono',monospace;
+  --body:'Space Grotesk',sans-serif;
+  --display:'Syne',sans-serif;
+  --r:12px;
+  --r2:20px;
+  --r3:28px;
+}
+html,body{height:100%;overflow:hidden;cursor:default}
+body{background:var(--bg);color:var(--text);font-family:var(--body);-webkit-font-smoothing:antialiased}
+
+/* 3D CANVAS */
+#three-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+/* NOISE OVERLAY */
+.noise{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")}
+.vignette{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(2,4,8,0.7) 100%)}
+.scanline{position:fixed;inset:0;z-index:3;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.03) 3px,rgba(0,0,0,0.03) 4px)}
+
+/* PAGES */
+.page{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;z-index:10;transition:opacity 0.6s cubic-bezier(0.4,0,0.2,1),transform 0.6s cubic-bezier(0.4,0,0.2,1)}
+.page.hidden{opacity:0;pointer-events:none;transform:translateY(20px) scale(0.98)}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ═══════════════════════════════════════
+   CURSOR
+═══════════════════════════════════════ */
+#cursor{position:fixed;width:8px;height:8px;background:var(--cyan);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);mix-blend-mode:screen;transition:transform 0.1s,width 0.2s,height 0.2s,opacity 0.2s}
+#cursor-ring{position:fixed;width:40px;height:40px;border:1px solid rgba(0,212,255,0.4);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:transform 0.08s,width 0.3s,height 0.3s,border-color 0.3s}
+body.admin-mode #cursor{background:var(--amber)}
+body.admin-mode #cursor-ring{border-color:rgba(255,170,0,0.4)}
+
+/* ═══════════════════════════════════════
+   GLASSY PANEL MIXIN
+═══════════════════════════════════════ */
+.glass{background:var(--panel);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--border)}
+.glass2{background:var(--panel2);backdrop-filter:blur(32px) saturate(200%);-webkit-backdrop-filter:blur(32px) saturate(200%);border:1px solid var(--border)}
+
+/* ═══════════════════════════════════════
+   LOGIN PAGE
+═══════════════════════════════════════ */
+#login-page{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;z-index:20}
+
+.login-hero{text-align:center;margin-bottom:60px;animation:heroIn 1s cubic-bezier(0.22,1,0.36,1) forwards}
+@keyframes heroIn{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+
+.logo-3d{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:20px}
+.logo-hex{position:relative;width:72px;height:72px;animation:hexSpin 20s linear infinite}
+@keyframes hexSpin{0%{filter:hue-rotate(0deg)}100%{filter:hue-rotate(360deg)}}
+.logo-hex svg{filter:drop-shadow(0 0 20px var(--cyan))}
+
+.login-wordmark{font-family:var(--display);font-size:44px;font-weight:800;letter-spacing:-1px;color:var(--text)}
+.login-wordmark em{font-style:normal;background:linear-gradient(135deg,var(--cyan),#0066ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+.login-sub{font-family:var(--mono);font-size:11px;letter-spacing:4px;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.chain-id-pill{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--cyan);background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);padding:6px 16px;border-radius:100px;margin-bottom:0}
+.chain-id-pill::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* LOGIN CARDS */
+.login-cards{display:grid;grid-template-columns:1fr 1fr;gap:24px;width:100%;max-width:900px;animation:cardsIn 1s 0.3s cubic-bezier(0.22,1,0.36,1) both}
+@keyframes cardsIn{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+
+.lcard{position:relative;border-radius:var(--r3);overflow:hidden;cursor:pointer;transition:transform 0.4s cubic-bezier(0.22,1,0.36,1),box-shadow 0.4s;transform-style:preserve-3d}
+.lcard-inner{background:linear-gradient(145deg,rgba(8,18,32,0.95),rgba(4,10,20,0.98));border-radius:var(--r3);border:1px solid var(--border);padding:0;overflow:hidden;transition:border-color 0.3s}
+.lcard:hover{transform:translateY(-8px) rotateX(2deg) rotateY(-2deg);box-shadow:0 40px 80px rgba(0,0,0,0.5)}
+.lcard.usr:hover .lcard-inner{border-color:rgba(0,212,255,0.4);box-shadow:0 0 60px rgba(0,212,255,0.08) inset}
+.lcard.adm:hover .lcard-inner{border-color:rgba(255,170,0,0.4);box-shadow:0 0 60px rgba(255,170,0,0.08) inset}
+
+.lcard-glow{position:absolute;inset:-1px;border-radius:inherit;opacity:0;transition:opacity 0.4s;pointer-events:none;z-index:0}
+.lcard.usr .lcard-glow{background:radial-gradient(ellipse at 50% 0%,rgba(0,212,255,0.15),transparent 70%)}
+.lcard.adm .lcard-glow{background:radial-gradient(ellipse at 50% 0%,rgba(255,170,0,0.15),transparent 70%)}
+.lcard:hover .lcard-glow{opacity:1}
+
+.lcard-stripe{height:3px;width:100%}
+.lcard.usr .lcard-stripe{background:linear-gradient(90deg,transparent,var(--cyan),#0066ff,transparent)}
+.lcard.adm .lcard-stripe{background:linear-gradient(90deg,transparent,var(--amber),#ff6600,transparent)}
+
+.lcard-content{padding:36px 36px 32px;position:relative;z-index:1}
+.lcard-icon-wrap{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:24px;position:relative}
+.lcard.usr .lcard-icon-wrap{background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2)}
+.lcard.adm .lcard-icon-wrap{background:rgba(255,170,0,0.08);border:1px solid rgba(255,170,0,0.2)}
+.lcard-icon{font-size:28px;line-height:1;filter:drop-shadow(0 0 10px currentColor)}
+.lcard-role-tag{font-family:var(--mono);font-size:9px;letter-spacing:4px;text-transform:uppercase;margin-bottom:10px}
+.lcard.usr .lcard-role-tag{color:var(--cyan)}
+.lcard.adm .lcard-role-tag{color:var(--amber)}
+.lcard-title{font-family:var(--display);font-size:30px;font-weight:800;color:var(--text);margin-bottom:10px;letter-spacing:-0.5px}
+.lcard-desc{font-family:var(--body);font-size:14px;color:var(--text3);line-height:1.7;margin-bottom:24px}
+
+.perm-list{display:flex;flex-direction:column;gap:8px;margin-bottom:32px}
+.perm{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.4}
+.perm-check{width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.lcard.usr .perm-check{background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);color:var(--cyan)}
+.lcard.adm .perm-check{background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.3);color:var(--amber)}
+.perm.locked{color:var(--text4)}
+.perm.locked .perm-check{background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.08);color:var(--text4)}
+
+.lcard-btn{width:100%;padding:16px 24px;font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border:none;border-radius:12px;cursor:pointer;transition:all 0.25s;position:relative;overflow:hidden}
+.lcard-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.1),transparent);pointer-events:none}
+.lcard.usr .lcard-btn{background:linear-gradient(135deg,var(--cyan),#0088ee);color:#000;box-shadow:0 8px 32px rgba(0,212,255,0.3)}
+.lcard.usr .lcard-btn:hover{box-shadow:0 12px 48px rgba(0,212,255,0.5);transform:translateY(-1px)}
+.lcard.adm .lcard-btn{background:linear-gradient(135deg,var(--amber),#ff6600);color:#000;box-shadow:0 8px 32px rgba(255,170,0,0.3)}
+.lcard.adm .lcard-btn:hover{box-shadow:0 12px 48px rgba(255,170,0,0.5);transform:translateY(-1px)}
+
+.login-footer{margin-top:32px;display:flex;align-items:center;gap:16px;animation:cardsIn 1s 0.5s cubic-bezier(0.22,1,0.36,1) both}
+.footer-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text4);background:rgba(255,255,255,0.03);border:1px solid var(--border);padding:8px 16px;border-radius:100px;text-transform:uppercase}
+.footer-pill span{color:var(--cyan)}
+
+/* ═══════════════════════════════════════
+   MODAL
+═══════════════════════════════════════ */
+.modal-overlay{position:fixed;inset:0;z-index:300;background:rgba(2,4,8,0.88);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.35s;padding:20px}
+.modal-overlay.show{opacity:1;pointer-events:all}
+.modal{width:100%;max-width:480px;border-radius:var(--r3);overflow:hidden;transform:scale(0.94) translateY(16px);transition:transform 0.4s cubic-bezier(0.22,1,0.36,1);position:relative;background:linear-gradient(145deg,rgba(8,18,32,0.98),rgba(4,10,20,0.99));border:1px solid var(--border2)}
+.modal-overlay.show .modal{transform:scale(1) translateY(0)}
+.modal-stripe{height:3px;width:100%}
+.modal-stripe.usr{background:linear-gradient(90deg,transparent,var(--cyan),#0066ff,transparent)}
+.modal-stripe.adm{background:linear-gradient(90deg,transparent,var(--amber),#ff6600,transparent)}
+.modal-head{padding:32px 36px;border-bottom:1px solid var(--border)}
+.modal-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;letter-spacing:3px;text-transform:uppercase;padding:5px 14px;border-radius:100px;margin-bottom:16px}
+.modal-badge.usr{background:rgba(0,212,255,0.08);color:var(--cyan);border:1px solid rgba(0,212,255,0.25)}
+.modal-badge.adm{background:rgba(255,170,0,0.08);color:var(--amber);border:1px solid rgba(255,170,0,0.25)}
+.modal-title{font-family:var(--display);font-size:22px;font-weight:800;color:var(--text);margin-bottom:6px}
+.modal-subtitle{font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.7}
+.modal-body{padding:28px 36px}
+.mfield{margin-bottom:20px}
+.mlabel{display:block;font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.minput{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:13px;padding:13px 18px;outline:none;transition:all 0.25s;letter-spacing:0.5px}
+.minput::placeholder{color:var(--text4)}
+.minput:focus,.minput.usr:focus{border-color:rgba(0,212,255,0.5);box-shadow:0 0 0 3px rgba(0,212,255,0.08),0 0 20px rgba(0,212,255,0.05)}
+.minput.adm:focus{border-color:rgba(255,170,0,0.5);box-shadow:0 0 0 3px rgba(255,170,0,0.08)}
+.mrow{display:flex;gap:10px}
+.mrow .minput{flex:1}
+.mbtn-connect{padding:13px 18px;font-family:var(--mono);font-size:11px;border-radius:10px;border:none;cursor:pointer;transition:all 0.2s;white-space:nowrap;letter-spacing:1px;flex-shrink:0}
+.mbtn-connect.usr{background:rgba(0,212,255,0.1);color:var(--cyan);border:1px solid rgba(0,212,255,0.25)}
+.mbtn-connect.usr:hover{background:rgba(0,212,255,0.2)}
+.mbtn-connect.adm{background:rgba(255,170,0,0.1);color:var(--amber);border:1px solid rgba(255,170,0,0.25)}
+.mbtn-connect.adm:hover{background:rgba(255,170,0,0.2)}
+.mbtn-enter{width:100%;padding:16px;font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border:none;border-radius:12px;cursor:pointer;transition:all 0.25s;margin-top:8px;position:relative;overflow:hidden}
+.mbtn-enter::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.12),transparent);pointer-events:none}
+.mbtn-enter.usr{background:linear-gradient(135deg,var(--cyan),#0088ee);color:#000;box-shadow:0 8px 24px rgba(0,212,255,0.3)}
+.mbtn-enter.usr:hover{box-shadow:0 12px 40px rgba(0,212,255,0.5);transform:translateY(-1px)}
+.mbtn-enter.adm{background:linear-gradient(135deg,var(--amber),#ff6600);color:#000;box-shadow:0 8px 24px rgba(255,170,0,0.3)}
+.mbtn-enter.adm:hover{box-shadow:0 12px 40px rgba(255,170,0,0.5);transform:translateY(-1px)}
+.mclose{position:absolute;top:18px;right:18px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text3);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s;z-index:2}
+.mclose:hover{background:rgba(255,51,102,0.15);color:var(--red);border-color:rgba(255,51,102,0.3)}
+.mstatus{margin-top:14px;padding:13px 18px;border-radius:10px;font-family:var(--mono);font-size:12px;display:none;align-items:center;gap:10px;line-height:1.6}
+.mstatus.show{display:flex}
+.mstatus.fail{background:rgba(255,51,102,0.08);color:var(--red);border:1px solid rgba(255,51,102,0.2)}
+.mstatus.ok{background:rgba(0,255,136,0.06);color:var(--green);border:1px solid rgba(0,255,136,0.2)}
+.mstatus.loading{background:rgba(0,212,255,0.06);color:var(--cyan);border:1px solid rgba(0,212,255,0.2)}
+.mstatus.loading.adm{background:rgba(255,170,0,0.06);color:var(--amber);border:1px solid rgba(255,170,0,0.2)}
+
+/* ═══════════════════════════════════════
+   TOPBAR (BOTH PORTALS)
+═══════════════════════════════════════ */
+.topbar{position:sticky;top:0;z-index:50;height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 36px;background:rgba(2,4,8,0.85);backdrop-filter:blur(32px);border-bottom:1px solid var(--border)}
+.topbar-left{display:flex;align-items:center;gap:20px}
+.back-btn{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--text3);background:rgba(255,255,255,0.04);border:1px solid var(--border);padding:8px 16px;border-radius:100px;cursor:pointer;transition:all 0.2s;letter-spacing:1px}
+.back-btn:hover{color:var(--text);border-color:var(--border2)}
+.topbar-brand{display:flex;align-items:center;gap:12px}
+.brand-name{font-family:var(--display);font-size:17px;font-weight:800;letter-spacing:-0.3px}
+.brand-name em{font-style:normal}
+.usr-brand em{background:linear-gradient(135deg,var(--cyan),#0088ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.adm-brand em{background:linear-gradient(135deg,var(--amber),#ff6600);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.role-tag{font-family:var(--mono);font-size:9px;letter-spacing:3px;text-transform:uppercase;padding:4px 12px;border-radius:100px}
+.role-tag.usr{background:rgba(0,212,255,0.08);color:var(--cyan);border:1px solid rgba(0,212,255,0.2)}
+.role-tag.adm{background:rgba(255,170,0,0.08);color:var(--amber);border:1px solid rgba(255,170,0,0.2)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.net-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--green);background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.18);padding:8px 16px;border-radius:100px}
+.net-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 2s infinite}
+.wallet-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;padding:8px 18px;border-radius:100px}
+.wallet-pill.usr{background:rgba(0,212,255,0.08);color:var(--cyan);border:1px solid rgba(0,212,255,0.2)}
+.wallet-pill.adm{background:rgba(255,170,0,0.08);color:var(--amber);border:1px solid rgba(255,170,0,0.2)}
+.w-dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 2s infinite}
+.gas-pill{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--text3);background:rgba(255,255,255,0.03);border:1px solid var(--border);padding:7px 14px;border-radius:100px}
+.logout-btn{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:8px 18px;border-radius:100px;background:transparent;color:var(--text4);border:1px solid var(--border);cursor:pointer;transition:all 0.2s}
+.logout-btn:hover{background:rgba(255,51,102,0.08);color:var(--red);border-color:rgba(255,51,102,0.3)}
+
+/* ═══════════════════════════════════════
+   USER PORTAL
+═══════════════════════════════════════ */
+#user-page{background:linear-gradient(180deg,var(--bg),#020610)}
+.u-body{max-width:1040px;margin:0 auto;padding:48px 36px 100px}
+
+.u-hero{padding:52px 52px 44px;border-radius:var(--r3);margin-bottom:48px;position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(0,30,60,0.6),rgba(0,10,30,0.8));border:1px solid rgba(0,212,255,0.15);animation:fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) forwards}
+.u-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),#0066ff,transparent)}
+.u-hero::after{content:'';position:absolute;top:-100px;right:-100px;width:300px;height:300px;background:radial-gradient(circle,rgba(0,212,255,0.07),transparent 70%);pointer-events:none}
+.hero-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:5px;color:var(--cyan);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:12px}
+.hero-eyebrow::before{content:'';width:24px;height:1px;background:var(--cyan)}
+.u-hero-title{font-family:var(--display);font-size:44px;font-weight:800;letter-spacing:-2px;color:var(--text);line-height:1.05;margin-bottom:14px}
+.u-hero-title em{font-style:normal;background:linear-gradient(135deg,var(--cyan),#4499ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.u-hero-desc{font-family:var(--body);font-size:15px;color:var(--text3);line-height:1.8;max-width:540px;margin-bottom:32px}
+.hero-stats-row{display:flex;gap:32px}
+.hstat{display:flex;flex-direction:column;gap:4px}
+.hstat-val{font-family:var(--display);font-size:26px;font-weight:800;color:var(--cyan);text-shadow:0 0 20px var(--cyan-glow)}
+.hstat-lbl{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:2px;text-transform:uppercase}
+.hstat-sep{width:1px;background:var(--border);align-self:stretch}
+
+/* SEARCH */
+.sec-label{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:9px;letter-spacing:5px;color:var(--text4);text-transform:uppercase;margin-bottom:20px}
+.sec-label::before{content:'//';color:var(--cyan)}
+.sec-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+.sec-label.adm::before{color:var(--amber)}
+
+.search-wrap{position:relative;margin-bottom:0}
+.search-box{display:flex;background:rgba(4,12,24,0.9);border:1px solid var(--border2);border-radius:var(--r2);overflow:hidden;transition:all 0.3s}
+.search-box:focus-within{border-color:rgba(0,212,255,0.5);box-shadow:0 0 0 1px rgba(0,212,255,0.2),0 0 60px rgba(0,212,255,0.06)}
+.search-tag{display:flex;align-items:center;padding:0 20px;font-family:var(--mono);font-size:11px;color:var(--cyan);border-right:1px solid var(--border);background:rgba(0,212,255,0.05);white-space:nowrap;gap:8px;letter-spacing:1px}
+#user-search{flex:1;border:none;outline:none;font-family:var(--mono);font-size:16px;color:var(--text);background:transparent;padding:20px 24px;letter-spacing:0.5px}
+#user-search::placeholder{color:var(--text4)}
+.search-btn{padding:0 36px;background:linear-gradient(135deg,var(--cyan),#0088ee);color:#000;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border:none;cursor:pointer;transition:all 0.2s;flex-shrink:0;position:relative;overflow:hidden}
+.search-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent);pointer-events:none}
+.search-btn:hover{background:linear-gradient(135deg,#00f0ff,#00aaff)}
+
+/* SBAR */
+.sbar{margin-top:14px;padding:14px 20px;border-radius:12px;font-family:var(--mono);font-size:12px;display:none;align-items:center;gap:12px;line-height:1.7}
+.sbar.show{display:flex}
+.sbar.loading{background:rgba(0,212,255,0.06);color:var(--cyan);border:1px solid rgba(0,212,255,0.2)}
+.sbar.loading.adm{background:rgba(255,170,0,0.06);color:var(--amber);border:1px solid rgba(255,170,0,0.2)}
+.sbar.ok{background:rgba(0,255,136,0.05);color:var(--green);border:1px solid rgba(0,255,136,0.18)}
+.sbar.fail{background:rgba(255,51,102,0.05);color:var(--red);border:1px solid rgba(255,51,102,0.18)}
+
+/* RESULT CARD */
+.result-card{display:none;border-radius:var(--r2);overflow:hidden;margin-top:20px;animation:fadeUp 0.5s cubic-bezier(0.22,1,0.36,1);border:1px solid var(--border);background:linear-gradient(145deg,rgba(6,14,26,0.95),rgba(4,10,20,0.98))}
+.result-card.show{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.rcard-head{padding:28px 32px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
+.rcard-head.valid{background:linear-gradient(135deg,rgba(0,255,136,0.05),transparent)}
+.rcard-head.valid::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--green),transparent)}
+.rcard-head.invalid{background:linear-gradient(135deg,rgba(255,51,102,0.05),transparent)}
+.rcard-head.invalid::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--red),transparent)}
+.rcard-head.notfound{background:rgba(255,255,255,0.02)}
+
+.rcard-status{display:flex;align-items:center;gap:18px}
+.rcard-icon{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.rcard-icon.v{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3)}
+.rcard-icon.r{background:rgba(255,51,102,0.1);border:1px solid rgba(255,51,102,0.3)}
+.rcard-icon.n{background:rgba(255,255,255,0.04);border:1px solid var(--border2)}
+.rcard-status-h3{font-family:var(--display);font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px}
+.rcard-status-p{font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:0.5px}
+.escan-btn{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--cyan);background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);padding:10px 18px;border-radius:100px;text-decoration:none;transition:all 0.2s;text-transform:uppercase;white-space:nowrap}
+.escan-btn:hover{background:var(--cyan);color:#000;box-shadow:0 0 24px var(--cyan-glow)}
+
+.rcard-grid{display:grid;grid-template-columns:repeat(3,1fr)}
+.rfield{padding:22px 26px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);transition:background 0.2s}
+.rfield:hover{background:rgba(255,255,255,0.02)}
+.rfield:nth-child(3n){border-right:none}
+.rfield:nth-last-child(-n+3){border-bottom:none}
+.rfield-lbl{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--text4);text-transform:uppercase;margin-bottom:8px}
+.rfield-val{font-family:var(--body);font-size:15px;font-weight:600;color:var(--text)}
+.rfield-val.mono{font-family:var(--mono);font-size:10px;font-weight:400;color:var(--cyan);word-break:break-all;line-height:1.8}
+.rfield-val.valid{color:var(--green)}
+.rfield-val.invalid{color:var(--red)}
+.status-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:100px;font-family:var(--mono);font-size:11px;font-weight:500}
+.status-badge.v{background:rgba(0,255,136,0.1);color:var(--green);border:1px solid rgba(0,255,136,0.25)}
+.status-badge.r{background:rgba(255,51,102,0.1);color:var(--red);border:1px solid rgba(255,51,102,0.25)}
+
+/* STATS ROW */
+.u-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+.u-stat{border-radius:var(--r2);padding:24px 26px;position:relative;overflow:hidden;cursor:default;transition:border-color 0.25s,transform 0.25s;background:linear-gradient(145deg,rgba(6,14,26,0.9),rgba(4,10,20,0.95));border:1px solid var(--border)}
+.u-stat:hover{border-color:rgba(0,212,255,0.3);transform:translateY(-2px)}
+.u-stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),#0066ff,transparent);opacity:0.4}
+.ustat-num{font-family:var(--display);font-size:28px;font-weight:800;color:var(--cyan);text-shadow:0 0 20px var(--cyan-glow);display:block;margin-bottom:6px}
+.ustat-lbl{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:2px;text-transform:uppercase}
+.ustat-sub{font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:8px}
+
+/* ═══════════════════════════════════════
+   ADMIN PORTAL
+═══════════════════════════════════════ */
+#admin-page{background:linear-gradient(180deg,#030508,#030408)}
+.a-body{max-width:1140px;margin:0 auto;padding:48px 36px 100px}
+
+.a-hero{display:grid;grid-template-columns:1fr auto;gap:36px;align-items:center;margin-bottom:52px;padding:44px 52px;border-radius:var(--r3);position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(30,15,0,0.6),rgba(20,10,0,0.8));border:1px solid rgba(255,170,0,0.18);animation:fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) forwards}
+.a-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--amber),#ff6600,transparent)}
+.a-hero::after{content:'';position:absolute;top:-100px;right:-100px;width:300px;height:300px;background:radial-gradient(circle,rgba(255,170,0,0.07),transparent 70%);pointer-events:none}
+.a-hero-title{font-family:var(--display);font-size:40px;font-weight:800;letter-spacing:-2px;color:var(--text);line-height:1.05;margin-bottom:12px}
+.a-hero-title em{font-style:normal;background:linear-gradient(135deg,var(--amber),#ff6600);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.a-hero-desc{font-family:var(--body);font-size:14px;color:var(--text3);line-height:1.8;max-width:540px}
+.adm-live-stats{display:flex;flex-direction:column;gap:14px;min-width:200px}
+.adm-stat{border-radius:var(--r);padding:18px 22px;position:relative;overflow:hidden;background:rgba(255,170,0,0.04);border:1px solid rgba(255,170,0,0.15)}
+.adm-stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--amber),transparent);opacity:0.5}
+.adm-stat-num{font-family:var(--display);font-size:26px;font-weight:800;color:var(--amber);text-shadow:0 0 16px var(--amber-glow);display:block;line-height:1}
+.adm-stat-lbl{font-family:var(--mono);font-size:9px;color:var(--text4);letter-spacing:2px;text-transform:uppercase;margin-top:5px}
+
+/* OPS */
+.ops-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:44px}
+.op-card{border-radius:var(--r2);overflow:hidden;background:linear-gradient(145deg,rgba(8,16,28,0.95),rgba(4,10,20,0.98));border:1px solid var(--border)}
+.op-head{padding:22px 28px;display:flex;align-items:center;gap:14px;position:relative;border-bottom:1px solid var(--border)}
+.op-head::before{content:'';position:absolute;top:0;left:0;right:0;height:1px}
+.op-head.issue::before{background:linear-gradient(90deg,var(--amber),transparent)}
+.op-head.revoke::before{background:linear-gradient(90deg,var(--red),transparent)}
+.op-head.issue{background:linear-gradient(135deg,rgba(255,170,0,0.04),transparent)}
+.op-head.revoke{background:linear-gradient(135deg,rgba(255,51,102,0.04),transparent)}
+.op-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.op-icon.issue{background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.2)}
+.op-icon.revoke{background:rgba(255,51,102,0.1);border:1px solid rgba(255,51,102,0.2)}
+.op-title{font-family:var(--display);font-size:18px;font-weight:700;color:var(--text);margin-bottom:3px}
+.op-sub{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:0.5px}
+.op-body{padding:24px 28px}
+
+/* FORM */
+.field{margin-bottom:16px}
+.flbl{display:block;font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
+.finput{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:13px;padding:12px 16px;outline:none;transition:all 0.25s;letter-spacing:0.3px}
+.finput:focus{border-color:rgba(255,170,0,0.4);box-shadow:0 0 0 3px rgba(255,170,0,0.06)}
+.finput::placeholder{color:var(--text4)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.warn{padding:12px 16px;border-radius:10px;font-family:var(--mono);font-size:11px;line-height:1.8;display:flex;gap:10px;align-items:flex-start;margin-bottom:16px}
+.warn.amber{background:rgba(255,170,0,0.05);border:1px solid rgba(255,170,0,0.2);color:rgba(255,170,0,0.7)}
+.warn.red{background:rgba(255,51,102,0.05);border:1px solid rgba(255,51,102,0.2);color:rgba(255,51,102,0.7)}
+.btn-issue{width:100%;padding:14px;background:linear-gradient(135deg,var(--amber),#ff6600);color:#000;font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border:none;border-radius:10px;cursor:pointer;transition:all 0.25s;margin-top:6px;position:relative;overflow:hidden}
+.btn-issue::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.12),transparent);pointer-events:none}
+.btn-issue:hover{box-shadow:0 8px 32px rgba(255,170,0,0.4);transform:translateY(-1px)}
+.btn-issue:disabled{opacity:0.3;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-revoke{width:100%;padding:14px;background:rgba(255,51,102,0.1);color:var(--red);font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border:1px solid rgba(255,51,102,0.25);border-radius:10px;cursor:pointer;transition:all 0.25s;margin-top:6px}
+.btn-revoke:hover{background:var(--red);color:#fff;box-shadow:0 8px 24px rgba(255,51,102,0.35);transform:translateY(-1px);border-color:var(--red)}
+.btn-neutral{width:100%;padding:13px;background:rgba(255,255,255,0.04);color:var(--text2);font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:all 0.2s}
+.btn-neutral:hover{border-color:var(--text3);color:var(--text);transform:translateY(-1px)}
+
+/* CHAIN FEED */
+.chain-panel{border-radius:var(--r2);overflow:hidden;position:relative;background:linear-gradient(145deg,rgba(6,14,26,0.95),rgba(4,10,20,0.98));border:1px solid var(--border)}
+.chain-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--amber),transparent);opacity:0.6}
+.chain-head{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.chain-title{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.chain-network{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:1px}
+.block-stream{display:flex;align-items:center;overflow-x:auto;padding:22px 24px;gap:10px}
+.block-stream::-webkit-scrollbar{height:3px}
+.block-stream::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.bchip{flex:0 0 auto;padding:14px 18px;border:1px solid var(--border);border-radius:12px;min-width:116px;background:rgba(255,255,255,0.02);transition:all 0.2s;cursor:pointer}
+.bchip:hover{border-color:rgba(255,170,0,0.35);background:rgba(255,170,0,0.04);transform:translateY(-2px)}
+.bchip.genesis{border-color:rgba(255,255,255,0.06)}
+.bchip.latest{border-color:rgba(0,255,136,0.35);background:rgba(0,255,136,0.04);animation:blockPulse 3s infinite}
+@keyframes blockPulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 20px rgba(0,255,136,0.15)}}
+.bnum{font-family:var(--mono);font-size:9px;color:var(--text4);margin-bottom:7px;letter-spacing:2px;text-transform:uppercase}
+.bhash{font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.6;font-weight:500}
+.bchip.latest .bhash{color:var(--green)}
+.barrow{flex:0 0 auto;color:var(--text4);font-family:var(--mono);font-size:14px;padding:0 2px;opacity:0.6}
+
+/* INFO BAR */
+.info-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;margin-top:18px}
+.icell{background:rgba(6,14,26,0.95);padding:18px 22px;transition:background 0.2s}
+.icell:hover{background:rgba(10,20,36,0.98)}
+.ik{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text4);text-transform:uppercase;margin-bottom:7px}
+.iv{font-family:var(--mono);font-size:11px;color:var(--text2);word-break:break-all}
+.iv.cyan{color:var(--cyan)}
+.iv.amber{color:var(--amber)}
+.iv.green{color:var(--green)}
+
+/* TX LOG */
+.txlog{border-radius:var(--r2);overflow:hidden;background:linear-gradient(145deg,rgba(6,14,26,0.95),rgba(4,10,20,0.98));border:1px solid var(--border);margin-top:22px}
+.txlog-head{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.txlog-title{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.txlog-clear{font-family:var(--mono);font-size:9px;color:var(--text4);background:transparent;border:1px solid var(--border);padding:5px 12px;border-radius:100px;cursor:pointer;transition:all 0.2s;letter-spacing:1px;text-transform:uppercase}
+.txlog-clear:hover{color:var(--text3);border-color:var(--border2)}
+.txlog-body{max-height:200px;overflow-y:auto}
+.tx-entry{display:flex;align-items:flex-start;gap:16px;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,0.03);transition:background 0.2s;animation:fadeUp 0.4s cubic-bezier(0.22,1,0.36,1)}
+.tx-entry:hover{background:rgba(255,255,255,0.015)}
+.tx-entry:last-child{border-bottom:none}
+.tx-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.tx-dot.issue{background:var(--amber)}
+.tx-dot.revoke{background:var(--red)}
+.tx-dot.transfer{background:var(--cyan)}
+.tx-info{flex:1;min-width:0}
+.tx-action{font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:3px}
+.tx-hash{font-family:var(--mono);font-size:10px;color:var(--cyan);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.tx-hash:hover{text-decoration:underline}
+.tx-time{font-family:var(--mono);font-size:10px;color:var(--text4);white-space:nowrap;flex-shrink:0}
+.tx-empty{padding:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text4);letter-spacing:1px}
+
+/* SPINNER */
+.spin{display:inline-block;width:14px;height:14px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:rot 0.7s linear infinite;flex-shrink:0}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* GAS TRACKER */
+.gas-tracker{border-radius:var(--r2);overflow:hidden;background:linear-gradient(145deg,rgba(6,14,26,0.95),rgba(4,10,20,0.98));border:1px solid var(--border);margin-top:22px}
+.gas-head{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.gas-title{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.gas-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)}
+.gas-cell{background:rgba(6,14,26,0.95);padding:18px 22px;text-align:center}
+.gas-val{font-family:var(--display);font-size:22px;font-weight:700;margin-bottom:4px}
+.gas-val.slow{color:var(--green)}
+.gas-val.std{color:var(--amber)}
+.gas-val.fast{color:var(--red)}
+.gas-lbl{font-family:var(--mono);font-size:9px;color:var(--text4);letter-spacing:2px;text-transform:uppercase}
+.gas-gwei{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:4px}
+
+/* MISC */
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.d1{animation-delay:0.1s;opacity:0;animation:fadeUp 0.6s 0.1s cubic-bezier(0.22,1,0.36,1) forwards}
+.d2{animation-delay:0.2s;opacity:0;animation:fadeUp 0.6s 0.2s cubic-bezier(0.22,1,0.36,1) forwards}
+.d3{animation-delay:0.3s;opacity:0;animation:fadeUp 0.6s 0.3s cubic-bezier(0.22,1,0.36,1) forwards}
+.d4{animation-delay:0.4s;opacity:0;animation:fadeUp 0.6s 0.4s cubic-bezier(0.22,1,0.36,1) forwards}
+
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:liveGlow 2s infinite}
+@keyframes liveGlow{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,0.4)}70%{box-shadow:0 0 0 6px rgba(0,255,136,0)}}
+
+/* TOAST */
+.toast-container{position:fixed;top:24px;right:24px;z-index:500;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.toast{display:flex;align-items:flex-start;gap:12px;background:rgba(8,18,32,0.96);border:1px solid var(--border2);border-radius:14px;padding:16px 20px;min-width:320px;max-width:440px;backdrop-filter:blur(24px);animation:toastIn 0.4s cubic-bezier(0.22,1,0.36,1) forwards;pointer-events:all}
+.toast.removing{animation:toastOut 0.3s cubic-bezier(0.4,0,0.6,1) forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px) scale(0.96)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes toastOut{from{opacity:1;transform:translateX(0) scale(1)}to{opacity:0;transform:translateX(30px) scale(0.96)}}
+.toast-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.toast.success .toast-icon{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.25)}
+.toast.error .toast-icon{background:rgba(255,51,102,0.1);border:1px solid rgba(255,51,102,0.25)}
+.toast.info .toast-icon{background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.25)}
+.toast.warning .toast-icon{background:rgba(255,170,0,0.1);border:1px solid rgba(255,170,0,0.25)}
+.toast-content{flex:1;min-width:0}
+.toast-title{font-family:var(--display);font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px}
+.toast-msg{font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.6}
+.toast-close{width:24px;height:24px;border-radius:50%;background:transparent;border:none;color:var(--text4);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color 0.2s}
+.toast-close:hover{color:var(--text2)}
+.toast-progress{position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 14px 14px;animation:toastProgress 4s linear forwards}
+.toast.success .toast-progress{background:var(--green)}
+.toast.error .toast-progress{background:var(--red)}
+.toast.info .toast-progress{background:var(--cyan)}
+.toast.warning .toast-progress{background:var(--amber)}
+@keyframes toastProgress{from{width:100%}to{width:0}}
+
+/* CERT PREVIEW MODAL */
+.cert-modal{display:none;position:fixed;inset:0;z-index:400;background:rgba(2,4,8,0.92);backdrop-filter:blur(20px);align-items:center;justify-content:center;padding:20px}
+.cert-modal.show{display:flex}
+.cert-card{width:100%;max-width:760px;border-radius:var(--r3);overflow:hidden;background:linear-gradient(145deg,#0a1a2a,#040c18);border:1px solid rgba(0,212,255,0.3);animation:fadeUp 0.5s cubic-bezier(0.22,1,0.36,1);position:relative}
+.cert-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),#4499ff,var(--cyan),transparent)}
+.cert-body{padding:56px 60px;text-align:center;position:relative}
+.cert-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0.03;pointer-events:none}
+.cert-watermark svg{width:60%;height:60%}
+.cert-org{font-family:var(--mono);font-size:11px;letter-spacing:6px;color:var(--cyan);text-transform:uppercase;margin-bottom:24px}
+.cert-divider{width:80px;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);margin:0 auto 24px}
+.cert-main-title{font-family:var(--display);font-size:16px;font-weight:400;color:var(--text3);letter-spacing:4px;text-transform:uppercase;margin-bottom:12px}
+.cert-name{font-family:var(--display);font-size:44px;font-weight:800;color:var(--text);letter-spacing:-1px;margin-bottom:20px;background:linear-gradient(135deg,var(--text),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.cert-for{font-family:var(--body);font-size:16px;color:var(--text3);margin-bottom:8px}
+.cert-course{font-family:var(--display);font-size:28px;font-weight:700;color:var(--text);margin-bottom:32px;letter-spacing:-0.5px}
+.cert-meta-row{display:flex;justify-content:center;gap:48px;margin-bottom:36px}
+.cert-meta{text-align:center}
+.cert-meta-lbl{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--text4);text-transform:uppercase;margin-bottom:5px}
+.cert-meta-val{font-family:var(--mono);font-size:12px;color:var(--text2)}
+.cert-hash-row{background:rgba(0,212,255,0.04);border:1px solid rgba(0,212,255,0.15);border-radius:10px;padding:12px 20px;font-family:var(--mono);font-size:10px;color:var(--cyan);word-break:break-all;line-height:1.8;margin-bottom:8px}
+.cert-footer-row{display:flex;align-items:center;justify-content:space-between;padding:20px 60px;border-top:1px solid var(--border);background:rgba(255,255,255,0.02)}
+.cert-id-label{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:2px}
+.cert-valid-badge{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.25);padding:8px 18px;border-radius:100px}
+.cert-close-btn{position:absolute;top:20px;right:20px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:all 0.2s;z-index:2}
+.cert-close-btn:hover{background:rgba(255,51,102,0.1);color:var(--red);border-color:rgba(255,51,102,0.3)}
+.cert-print-btn{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--cyan);background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);padding:8px 18px;border-radius:100px;cursor:pointer;transition:all 0.2s;text-transform:uppercase}
+.cert-print-btn:hover{background:rgba(0,212,255,0.15)}
+
+@media(max-width:900px){
+  .login-cards{grid-template-columns:1fr}
+  .a-hero{grid-template-columns:1fr}
+  .ops-grid{grid-template-columns:1fr}
+  .info-row{grid-template-columns:1fr 1fr}
+  .u-stats{grid-template-columns:1fr}
+  .rcard-grid{grid-template-columns:1fr 1fr}
+  .gas-grid{grid-template-columns:1fr}
+  .u-body,.a-body{padding:24px 20px 80px}
+  .topbar{padding:0 20px}
+  .u-hero{padding:32px 28px 28px}
+  .u-hero-title{font-size:32px}
+  .a-hero{padding:32px 28px 28px}
+  .a-hero-title{font-size:30px}
+  .cert-body{padding:36px 32px}
+  .cert-name{font-size:30px}
+  .cert-footer-row{padding:16px 32px}
+  .cert-meta-row{gap:24px}
+}
+</style>
+</head>
+<body>
+
+<!-- CUSTOM CURSOR -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- VISUAL LAYERS -->
+<canvas id="three-canvas"></canvas>
+<div class="noise"></div>
+<div class="vignette"></div>
+<div class="scanline"></div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- CERTIFICATE PREVIEW MODAL -->
+<div class="cert-modal" id="cert-modal">
+  <div class="cert-card" id="cert-card-inner">
+    <button class="cert-close-btn" onclick="closeCertModal()">×</button>
+    <div class="cert-body">
+      <div class="cert-watermark">
+        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="100,10 170,50 170,150 100,190 30,150 30,50" stroke="#00d4ff" stroke-width="2" fill="none"/>
+          <polygon points="100,30 150,57.5 150,142.5 100,170 50,142.5 50,57.5" stroke="#00d4ff" stroke-width="1.5" fill="none"/>
+          <polygon points="100,55 130,72 130,128 100,145 70,128 70,72" fill="#00d4ff" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="cert-org" id="cv-org">RISE INTERNSHIP — TAMIZAN SKILLS</div>
+      <div class="cert-divider"></div>
+      <div class="cert-main-title">Certificate of Completion</div>
+      <div class="cert-name" id="cv-name">Recipient Name</div>
+      <div class="cert-for">has successfully completed</div>
+      <div class="cert-course" id="cv-course">Course Name</div>
+      <div class="cert-meta-row">
+        <div class="cert-meta"><div class="cert-meta-lbl">Issue Date</div><div class="cert-meta-val" id="cv-date">—</div></div>
+        <div class="cert-meta"><div class="cert-meta-lbl">Certificate ID</div><div class="cert-meta-val" id="cv-id">—</div></div>
+        <div class="cert-meta"><div class="cert-meta-lbl">Network</div><div class="cert-meta-val">Ethereum Sepolia</div></div>
+      </div>
+      <div class="cert-hash-row" id="cv-hash">On-Chain Hash: —</div>
+    </div>
+    <div class="cert-footer-row">
+      <div class="cert-id-label" id="cv-id-footer">CERT ID: —</div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <button class="cert-print-btn" onclick="window.print()">⎙ Print / Save PDF</button>
+        <div class="cert-valid-badge"><div class="live-dot"></div>Blockchain Verified</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ LOGIN ════════════════════ -->
+<div id="login-page" class="page">
+  <div class="login-hero">
+    <div class="logo-3d">
+      <div class="logo-hex">
+        <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
+          <polygon points="36,4 62,19 62,53 36,68 10,53 10,19" stroke="#00d4ff" stroke-width="1.2" fill="none" opacity="0.3"/>
+          <polygon points="36,12 56,23.5 56,48.5 36,60 16,48.5 16,23.5" stroke="#00d4ff" stroke-width="1" fill="none" opacity="0.55"/>
+          <polygon points="36,20 50,28 50,44 36,52 22,44 22,28" fill="url(#hg)" opacity="0.9"/>
+          <defs><linearGradient id="hg" x1="22" y1="28" x2="50" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#0066ff"/></linearGradient></defs>
+        </svg>
+      </div>
+      <div>
+        <div class="login-wordmark">CERT<em>CHAIN</em></div>
+        <div class="login-sub">Blockchain Certificate System</div>
+      </div>
+    </div>
+    <div class="chain-id-pill">Ethereum Sepolia Testnet · Chain ID 11155111</div>
+  </div>
+
+  <div class="login-cards">
+    <div class="lcard usr" onclick="openLoginModal('user')">
+      <div class="lcard-glow"></div>
+      <div class="lcard-inner">
+        <div class="lcard-stripe"></div>
+        <div class="lcard-content">
+          <div class="lcard-icon-wrap"><div class="lcard-icon" style="color:var(--cyan)">🔍</div></div>
+          <div class="lcard-role-tag">// Role: Public</div>
+          <div class="lcard-title">User Portal</div>
+          <div class="lcard-desc">Verify blockchain-issued certificates in real-time. Query any credential on the Ethereum network with complete transparency.</div>
+          <div class="perm-list">
+            <div class="perm"><div class="perm-check">✓</div>Verify any certificate by ID</div>
+            <div class="perm"><div class="perm-check">✓</div>View full on-chain certificate data</div>
+            <div class="perm"><div class="perm-check">✓</div>Check validity &amp; revocation status</div>
+            <div class="perm"><div class="perm-check">✓</div>Download verified certificate PDF</div>
+            <div class="perm locked"><div class="perm-check">—</div>Issue certificates [ADMIN ONLY]</div>
+            <div class="perm locked"><div class="perm-check">—</div>Revoke certificates [ADMIN ONLY]</div>
+          </div>
+          <button class="lcard-btn">Enter User Portal →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="lcard adm" onclick="openLoginModal('admin')">
+      <div class="lcard-glow"></div>
+      <div class="lcard-inner">
+        <div class="lcard-stripe"></div>
+        <div class="lcard-content">
+          <div class="lcard-icon-wrap"><div class="lcard-icon" style="color:var(--amber)">⚙️</div></div>
+          <div class="lcard-role-tag">// Role: Administrator</div>
+          <div class="lcard-title">Admin Panel</div>
+          <div class="lcard-desc">Full system authority. Issue tamper-proof credentials, revoke certificates, and monitor all blockchain operations in real-time.</div>
+          <div class="perm-list">
+            <div class="perm"><div class="perm-check">✓</div>Issue certificates on-chain</div>
+            <div class="perm"><div class="perm-check">✓</div>Revoke certificates permanently</div>
+            <div class="perm"><div class="perm-check">✓</div>Transfer admin role to new wallet</div>
+            <div class="perm"><div class="perm-check">✓</div>Monitor live blockchain feed</div>
+            <div class="perm"><div class="perm-check">✓</div>Real-time transaction log</div>
+          </div>
+          <button class="lcard-btn">Enter Admin Panel →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="login-footer">
+    <div class="footer-pill">Contract <span>0xd914...9138</span></div>
+    <div class="footer-pill">Sepolia <span>TESTNET</span></div>
+    <div class="footer-pill">ethers.js <span>v6.7</span></div>
+  </div>
+</div>
+
+<!-- ════════════════════ USER PORTAL ════════════════════ -->
+<div id="user-page" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="back-btn" onclick="logout()">← Exit</div>
+      <div class="topbar-brand">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><polygon points="14,2 24,8 24,20 14,26 4,20 4,8" stroke="#00d4ff" stroke-width="0.8" fill="none" opacity="0.5"/><polygon points="14,6 21,10 21,18 14,22 7,18 7,10" fill="url(#ug)" opacity="0.9"/><defs><linearGradient id="ug" x1="7" y1="10" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#0066ff"/></linearGradient></defs></svg>
+        <div class="brand-name usr-brand">CERT<em>CHAIN</em></div>
+        <div class="role-tag usr">USER</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="gas-pill">⛽ <span id="gas-display">— gwei</span></div>
+      <div class="net-pill"><div class="net-dot"></div>SEPOLIA LIVE</div>
+      <div class="wallet-pill usr"><div class="w-dot"></div><span id="usr-wallet-addr">Connecting...</span></div>
+      <div class="logout-btn" onclick="logout()">Logout</div>
+    </div>
+  </header>
+
+  <div class="u-body">
+    <div class="u-hero">
+      <div class="hero-eyebrow">Certificate Verification System</div>
+      <div class="u-hero-title"><em>Verify</em> Any Certificate</div>
+      <div class="u-hero-desc">Query the Ethereum blockchain to instantly verify the authenticity of any issued credential. Immutable, transparent, and tamper-proof.</div>
+      <div class="hero-stats-row">
+        <div class="hstat">
+          <div class="hstat-val" id="usr-stat-total">—</div>
+          <div class="hstat-lbl">Certs Issued</div>
+        </div>
+        <div class="hstat-sep"></div>
+        <div class="hstat">
+          <div class="hstat-val" id="usr-stat-block">—</div>
+          <div class="hstat-lbl">Block Height</div>
+        </div>
+        <div class="hstat-sep"></div>
+        <div class="hstat">
+          <div class="hstat-val" id="usr-stat-gas">—</div>
+          <div class="hstat-lbl">Gas (gwei)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d1">
+      <div class="sec-label">Certificate Lookup</div>
+      <div class="search-wrap">
+        <div class="search-box">
+          <div class="search-tag">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polygon points="6,1 10,3.5 10,8.5 6,11 2,8.5 2,3.5" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+            CERT-ID
+          </div>
+          <input type="text" id="user-search" placeholder="e.g.  CERT-RISE-2024-001" onkeydown="if(event.key==='Enter')userVerify()"/>
+          <button class="search-btn" onclick="userVerify()">Verify →</button>
+        </div>
+        <div class="sbar" id="usr-verify-status"></div>
+        <div class="result-card" id="usr-result"></div>
+      </div>
+    </div>
+
+    <div class="u-stats d2">
+      <div class="u-stat">
+        <span class="ustat-num" id="usr-stat-total2">—</span>
+        <div class="ustat-lbl">Total Issued</div>
+        <div class="ustat-sub">On-chain certificate records</div>
+      </div>
+      <div class="u-stat">
+        <span class="ustat-num" id="usr-stat-block2">—</span>
+        <div class="ustat-lbl">Latest Block</div>
+        <div class="ustat-sub" style="color:var(--cyan);cursor:pointer" onclick="window.open('https://sepolia.etherscan.io/address/0xd9145CCE52D386f254917e481eB44e9943F39138','_blank')">View Contract ↗</div>
+      </div>
+      <div class="u-stat">
+        <span class="ustat-num" style="font-size:14px;letter-spacing:0.3px;margin-top:4px">0xd914...9138</span>
+        <div class="ustat-lbl">Contract Address</div>
+        <div class="ustat-sub" style="color:var(--cyan);cursor:pointer" onclick="window.open('https://sepolia.etherscan.io/address/0xd9145CCE52D386f254917e481eB44e9943F39138','_blank')">Etherscan ↗</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ ADMIN PORTAL ════════════════════ -->
+<div id="admin-page" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="back-btn" onclick="logout()">← Exit</div>
+      <div class="topbar-brand">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><polygon points="14,2 24,8 24,20 14,26 4,20 4,8" stroke="#ffaa00" stroke-width="0.8" fill="none" opacity="0.5"/><polygon points="14,6 21,10 21,18 14,22 7,18 7,10" fill="url(#ag)" opacity="0.9"/><defs><linearGradient id="ag" x1="7" y1="10" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#ffaa00"/><stop offset="100%" stop-color="#ff6600"/></linearGradient></defs></svg>
+        <div class="brand-name adm-brand">CERT<em>CHAIN</em></div>
+        <div class="role-tag adm">ADMINISTRATOR</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="gas-pill">⛽ <span id="adm-gas-display">— gwei</span></div>
+      <div class="net-pill"><div class="net-dot"></div>SEPOLIA LIVE</div>
+      <div class="wallet-pill adm"><div class="w-dot"></div><span id="adm-wallet-addr">Connecting...</span></div>
+      <div class="logout-btn" onclick="logout()">Logout</div>
+    </div>
+  </header>
+
+  <div class="a-body">
+    <div class="a-hero">
+      <div>
+        <div class="hero-eyebrow" style="color:var(--amber);--cyan:var(--amber)">Admin Control Panel</div>
+        <div class="a-hero-title"><em>Blockchain</em> Certificate Management</div>
+        <div class="a-hero-desc">Issue tamper-proof credentials, revoke compromised certificates, and monitor all blockchain operations with full administrative authority.</div>
+      </div>
+      <div class="adm-live-stats">
+        <div class="adm-stat"><span class="adm-stat-num" id="adm-stat-total">—</span><div class="adm-stat-lbl">Certs Issued</div></div>
+        <div class="adm-stat"><span class="adm-stat-num" id="adm-stat-block" style="font-size:18px">—</span><div class="adm-stat-lbl">Block Height</div></div>
+      </div>
+    </div>
+
+    <div class="sec-label adm d1">Blockchain Operations</div>
+    <div class="ops-grid d1">
+      <div class="op-card">
+        <div class="op-head issue">
+          <div class="op-icon issue">📜</div>
+          <div><div class="op-title">Issue Certificate</div><div class="op-sub">Permanently written to Ethereum</div></div>
+        </div>
+        <div class="op-body">
+          <div class="warn amber">⚠ Only the admin wallet that deployed this contract may issue credentials.</div>
+          <div class="field"><label class="flbl">Certificate ID</label><input type="text" class="finput" id="issue-id" placeholder="CERT-RISE-2024-001"/></div>
+          <div class="frow">
+            <div class="field"><label class="flbl">Recipient Name</label><input type="text" class="finput" id="issue-name" placeholder="Full name"/></div>
+            <div class="field"><label class="flbl">Course / Program</label><input type="text" class="finput" id="issue-course" placeholder="Blockchain &amp; Web3"/></div>
+          </div>
+          <div class="field"><label class="flbl">Issuing Organization</label><input type="text" class="finput" id="issue-org" value="RISE Internship — Tamizan Skills"/></div>
+          <button class="btn-issue" id="issue-btn" onclick="issueCertificate()">Issue Certificate on Blockchain</button>
+          <div class="sbar" id="issue-status" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="op-card">
+        <div class="op-head revoke">
+          <div class="op-icon revoke">🚫</div>
+          <div><div class="op-title">Revoke Certificate</div><div class="op-sub">Permanent · Irreversible action</div></div>
+        </div>
+        <div class="op-body">
+          <div class="warn red">🚨 Revoking is permanent and irreversible. The certificate will be marked INVALID on-chain forever.</div>
+          <div class="field"><label class="flbl">Certificate ID to Revoke</label><input type="text" class="finput" id="revoke-id" placeholder="CERT-RISE-2024-001"/></div>
+          <button class="btn-revoke" onclick="revokeCertificate()">Revoke Certificate</button>
+          <div class="sbar" id="revoke-status" style="margin-top:12px"></div>
+          <div style="margin-top:26px;padding-top:26px;border-top:1px solid var(--border)">
+            <div class="flbl" style="margin-bottom:14px;font-size:10px">Transfer Admin Role</div>
+            <div class="field"><label class="flbl">New Admin Wallet Address</label><input type="text" class="finput" id="new-admin" placeholder="0x..."/></div>
+            <button class="btn-neutral" onclick="transferAdmin()">Transfer Admin Role</button>
+            <div class="sbar" id="transfer-status" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAS TRACKER -->
+    <div class="sec-label adm d2" style="margin-bottom:16px">Gas Tracker</div>
+    <div class="gas-tracker d2">
+      <div class="gas-head">
+        <div class="gas-title"><div class="live-dot"></div>Sepolia Gas Prices</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:1px" id="gas-updated">Updating...</div>
+      </div>
+      <div class="gas-grid">
+        <div class="gas-cell"><div class="gas-val slow" id="gas-slow">—</div><div class="gas-lbl">Slow</div><div class="gas-gwei">~5 min</div></div>
+        <div class="gas-cell"><div class="gas-val std" id="gas-std">—</div><div class="gas-lbl">Standard</div><div class="gas-gwei">~1 min</div></div>
+        <div class="gas-cell"><div class="gas-val fast" id="gas-fast">—</div><div class="gas-lbl">Fast</div><div class="gas-gwei">~15 sec</div></div>
+      </div>
+    </div>
+
+    <!-- CHAIN FEED -->
+    <div class="sec-label adm d3" style="margin-top:28px">Live Blockchain Feed</div>
+    <div class="chain-panel d3">
+      <div class="chain-head">
+        <div class="chain-title"><div class="live-dot"></div>Real-Time Block Stream</div>
+        <div class="chain-network">SEPOLIA · CHAIN ID 11155111</div>
+      </div>
+      <div class="block-stream" id="chain-blocks">
+        <div class="bchip genesis"><div class="bnum">GENESIS</div><div class="bhash">0x0000<br>0000</div></div>
+        <div class="barrow">→</div>
+        <div class="bchip"><div class="bnum" id="bn1">BLOCK N-4</div><div class="bhash" id="bh1">—</div></div>
+        <div class="barrow">→</div>
+        <div class="bchip"><div class="bnum" id="bn2">BLOCK N-3</div><div class="bhash" id="bh2">—</div></div>
+        <div class="barrow">→</div>
+        <div class="bchip"><div class="bnum" id="bn3">BLOCK N-2</div><div class="bhash" id="bh3">—</div></div>
+        <div class="barrow">→</div>
+        <div class="bchip"><div class="bnum" id="bn4">BLOCK N-1</div><div class="bhash" id="bh4">—</div></div>
+        <div class="barrow">→</div>
+        <div class="bchip latest"><div class="bnum">LATEST ●</div><div class="bhash" id="bh5">Syncing...</div></div>
+      </div>
+    </div>
+
+    <!-- INFO BAR -->
+    <div class="info-row d4">
+      <div class="icell"><div class="ik">Contract</div><div class="iv amber">0xd9145...F39138</div></div>
+      <div class="icell"><div class="ik">Admin Wallet</div><div class="iv" id="adm-info-admin">—</div></div>
+      <div class="icell"><div class="ik">Connected As</div><div class="iv green" id="adm-info-wallet">—</div></div>
+      <div class="icell"><div class="ik">Network</div><div class="iv">Sepolia Testnet</div></div>
+    </div>
+
+    <!-- TX LOG -->
+    <div class="sec-label adm" style="margin-top:28px">Transaction Log</div>
+    <div class="txlog">
+      <div class="txlog-head">
+        <div class="txlog-title"><div class="live-dot"></div>Session Activity</div>
+        <button class="txlog-clear" onclick="clearTxLog()">Clear</button>
+      </div>
+      <div class="txlog-body" id="tx-log-body">
+        <div class="tx-empty" id="tx-empty-msg">No transactions this session</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MODAL ════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOnBg(event)">
+  <div class="modal" id="login-modal">
+    <button class="mclose" onclick="closeModal()">×</button>
+    <div class="modal-stripe" id="modal-stripe"></div>
+    <div class="modal-head">
+      <div class="modal-badge" id="modal-badge"></div>
+      <div class="modal-title" id="modal-title"></div>
+      <div class="modal-subtitle" id="modal-sub"></div>
+    </div>
+    <div class="modal-body">
+<div id="modal-user-field" class="mfield">
+  <label class="mlabel">Your Name</label>
+  <input type="text" class="minput" id="modal-user-name" placeholder="Enter your name to login"/>
+</div>
+      <div class="mfield">
+        <label class="mlabel">MetaMask Wallet</label>
+        <div class="mrow">
+          <input type="text" class="minput" id="modal-wallet-display" placeholder="Not connected" readonly/>
+          <button class="mbtn-connect" id="modal-connect-btn" onclick="connectModalWallet()">Connect</button>
+        </div>
+      </div>
+      <button class="mbtn-enter" id="modal-enter-btn" onclick="enterPortal()"></button>
+      <div class="mstatus" id="modal-status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  API CONFIG
+// ══════════════════════════════════════════════════
+const API_BASE = 'http://localhost:3001/api';
+
+let authToken = localStorage.getItem('certchain_token');
+let currentUser = null;
+
+async function apiCall(endpoint, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'API error');
+  return data;
+}
+
+// ══════════════════════════════════════════════════
+//  CUSTOM CURSOR
+// ══════════════════════════════════════════════════
+const cur=document.getElementById('cursor'),ring=document.getElementById('cursor-ring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx+'px';cur.style.top=my+'px'});
+(function animCursor(){rx+=(mx-rx)*0.12;ry+=(my-ry)*0.12;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(animCursor)})();
+document.querySelectorAll('button,a,.lcard,.bchip').forEach(el=>{
+  el.addEventListener('mouseenter',()=>{cur.style.width='14px';cur.style.height='14px';ring.style.width='60px';ring.style.height='60px';ring.style.borderColor='rgba(0,212,255,0.6)'});
+  el.addEventListener('mouseleave',()=>{cur.style.width='8px';cur.style.height='8px';ring.style.width='40px';ring.style.height='40px';ring.style.borderColor='rgba(0,212,255,0.4)'});
+});
+
+// ══════════════════════════════════════════════════
+//  THREE.JS 3D BACKGROUND
+// ══════════════════════════════════════════════════
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('three-canvas'),antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setClearColor(0x000000,0);
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.1,1000);
+camera.position.z=30;
+
+// Particles
+const pGeo=new THREE.BufferGeometry();
+const N=1800;
+const pos=new Float32Array(N*3),col=new Float32Array(N*3),sz=new Float32Array(N);
+for(let i=0;i<N;i++){
+  pos[i*3]=(Math.random()-0.5)*120;
+  pos[i*3+1]=(Math.random()-0.5)*80;
+  pos[i*3+2]=(Math.random()-0.5)*60;
+  const r=Math.random();
+  if(r<0.6){col[i*3]=0;col[i*3+1]=0.6+Math.random()*0.4;col[i*3+2]=0.8+Math.random()*0.2}
+  else if(r<0.8){col[i*3]=0.6+Math.random()*0.4;col[i*3+1]=0.4+Math.random()*0.2;col[i*3+2]=0}
+  else{col[i*3]=0.2;col[i*3+1]=0.4+Math.random()*0.3;col[i*3+2]=0.8+Math.random()*0.2}
+  sz[i]=Math.random()*1.5+0.3;
+}
+pGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+pGeo.setAttribute('color',new THREE.BufferAttribute(col,3));
+pGeo.setAttribute('size',new THREE.BufferAttribute(sz,1));
+const pMat=new THREE.ShaderMaterial({
+  vertexShader:`attribute float size;varying vec3 vColor;void main(){vColor=color;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=size*(300.0/-mv.z);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`varying vec3 vColor;void main(){float d=length(gl_PointCoord-0.5);if(d>0.5)discard;float a=1.0-smoothstep(0.3,0.5,d);gl_FragColor=vec4(vColor,a*0.7);}`,
+  vertexColors:true,transparent:true,depthWrite:false
+});
+const particles=new THREE.Points(pGeo,pMat);
+scene.add(particles);
+
+// Floating hexagonal wireframes
+const hexGroup=new THREE.Group();
+const hexGeoms=[];
+for(let i=0;i<18;i++){
+  const r=Math.random()*4+2;
+  const shape=new THREE.Shape();
+  for(let j=0;j<6;j++){
+    const a=j*Math.PI/3;
+    j===0?shape.moveTo(r*Math.cos(a),r*Math.sin(a)):shape.lineTo(r*Math.cos(a),r*Math.sin(a));
+  }
+  shape.closePath();
+  const pts=shape.getPoints(6);
+  const hGeo=new THREE.BufferGeometry().setFromPoints(pts.map(p=>new THREE.Vector3(p.x,p.y,0)));
+  const isAdm=Math.random()>0.6;
+  const hMat=new THREE.LineBasicMaterial({color:isAdm?0xffaa00:0x00d4ff,transparent:true,opacity:Math.random()*0.12+0.04});
+  const hex=new THREE.LineLoop(hGeo,hMat);
+  hex.position.set((Math.random()-0.5)*100,(Math.random()-0.5)*70,(Math.random()-0.5)*40);
+  hex.rotation.z=Math.random()*Math.PI*2;
+  hex.userData={rx:(Math.random()-0.5)*0.003,ry:(Math.random()-0.5)*0.003,rz:(Math.random()-0.5)*0.004,py:(Math.random()-0.5)*0.02};
+  hexGroup.add(hex);
+  hexGeoms.push(hex);
+}
+scene.add(hexGroup);
+
+// Grid plane
+const gridHelper=new THREE.GridHelper(200,40,0x001830,0x001020);
+gridHelper.position.y=-20;
+gridHelper.material.opacity=0.4;
+gridHelper.material.transparent=true;
+scene.add(gridHelper);
+
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+let mXn=0,mYn=0;
+document.addEventListener('mousemove',e=>{mXn=(e.clientX/window.innerWidth-0.5)*2;mYn=-(e.clientY/window.innerHeight-0.5)*2});
+
+let isAdminMode=false;
+function setAdminMode(v){
+  isAdminMode=v;
+  document.body.classList.toggle('admin-mode',v);
+}
+
+const clock=new THREE.Clock();
+function animate3D(){
+  requestAnimationFrame(animate3D);
+  const t=clock.getElapsedTime();
+  particles.rotation.y=t*0.012;
+  particles.rotation.x=t*0.006;
+  camera.position.x+=(mXn*3-camera.position.x)*0.025;
+  camera.position.y+=(mYn*2-camera.position.y)*0.025;
+  camera.lookAt(scene.position);
+  hexGeoms.forEach(h=>{
+    h.rotation.x+=h.userData.rx;
+    h.rotation.y+=h.userData.ry;
+    h.rotation.z+=h.userData.rz;
+    h.position.y+=h.userData.py;
+    if(h.position.y>40)h.position.y=-40;
+    if(h.position.y<-40)h.position.y=40;
+  });
+  const c=isAdminMode?[1,0.5,0]:[0,0.7,1];
+  pMat.uniforms&&null;
+  renderer.render(scene,camera);
+}
+animate3D();
+
+// ══════════════════════════════════════════════════
+//  TOAST SYSTEM
+// ══════════════════════════════════════════════════
+function showToast(type,title,msg,duration=4000){
+  const icons={success:'✓',error:'✗',info:'ℹ',warning:'⚠'};
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;
+  t.style.position='relative';
+  t.innerHTML=`<div class="toast-icon">${icons[type]||'ℹ'}</div><div class="toast-content"><div class="toast-title">${title}</div><div class="toast-msg">${msg}</div></div><button class="toast-close" onclick="removeToast(this.parentElement)">×</button><div class="toast-progress"></div>`;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(()=>removeToast(t),duration);
+}
+function removeToast(el){
+  if(!el||!el.parentElement)return;
+  el.classList.add('removing');
+  setTimeout(()=>el.parentElement&&el.remove(),300);
+}
+
+// ══════════════════════════════════════════════════
+//  TX LOG
+// ══════════════════════════════════════════════════
+let txLog=[];
+function addTxEntry(type,action,hash){
+  txLog.unshift({type,action,hash,time:new Date()});
+  renderTxLog();
+}
+function renderTxLog(){
+  const body=document.getElementById('tx-log-body');
+  const empty=document.getElementById('tx-empty-msg');
+  if(txLog.length===0){empty.style.display='block';return}
+  empty.style.display='none';
+  const existing=body.querySelectorAll('.tx-entry');
+  existing.forEach(e=>e.remove());
+  txLog.slice(0,12).forEach(tx=>{
+    const el=document.createElement('div');
+    el.className='tx-entry';
+    const timeStr=tx.time.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const hashShort=tx.hash?tx.hash.slice(0,10)+'...'+tx.hash.slice(-6):'—';
+    el.innerHTML=`<div class="tx-dot ${tx.type}"></div><div class="tx-info"><div class="tx-action">${tx.action}</div>${tx.hash?`<a class="tx-hash" href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">↗ ${hashShort}</a>`:''}</div><div class="tx-time">${timeStr}</div>`;
+    body.insertBefore(el,empty);
+  });
+}
+function clearTxLog(){txLog=[];renderTxLog();showToast('info','Log Cleared','Transaction log has been cleared.')}
+
+// ══════════════════════════════════════════════════
+//  BLOCKCHAIN SETUP
+// ══════════════════════════════════════════════════
+const CONTRACT="0xd9145CCE52D386f254917e481eB44e9943F39138";
+const SEPOLIA="0xaa36a7";
+const ABI=[
+  {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
+  {"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"}],"name":"issueCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"verifyCertificate","outputs":[{"internalType":"bool","name":"isValid","type":"bool"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"},{"internalType":"uint256","name":"issueDate","type":"uint256"},{"internalType":"bytes32","name":"certHash","type":"bytes32"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"revokeCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"getTotalCertificates","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"transferAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"}
+];
+let provider=null,signer=null,contract=null,walletAddr=null,modalRole=null,blockInterval=null;
+
+async function getROProvider(){return new ethers.JsonRpcProvider('https://rpc.sepolia.org')}
+
+// ══════════════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════════════
+function openLoginModal(role){
+  modalRole=role;
+  const u=role==='user';
+  const stripe=document.getElementById('modal-stripe');
+  stripe.className='modal-stripe '+(u?'usr':'adm');
+  document.getElementById('modal-badge').className='modal-badge '+(u?'usr':'adm');
+  document.getElementById('modal-badge').textContent=u?'// USER PORTAL':'// ADMIN PANEL';
+  document.getElementById('modal-title').textContent=u?'Verify Certificates':'Administrator Access';
+  document.getElementById('modal-sub').textContent=u?'Enter your name to verify certificates (MetaMask optional).':'Connect the admin wallet that deployed this contract to access full control.';
+  document.getElementById('modal-enter-btn').className='mbtn-enter '+(u?'usr':'adm');
+  document.getElementById('modal-enter-btn').textContent=u?'Enter Portal →':'Enter Admin Panel →';
+  document.getElementById('modal-connect-btn').className='mbtn-connect '+(u?'usr':'adm');
+  document.getElementById('modal-connect-btn').textContent=u?'Optional':'Connect';
+  document.getElementById('modal-user-field').style.display='block';
+  const wi=document.getElementById('modal-wallet-display');
+  wi.value=walletAddr?walletAddr.slice(0,6)+'...'+walletAddr.slice(-4):'';
+  hideMstatus();
+  document.getElementById('modal-overlay').classList.add('show');
+}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('show')}
+function closeModalOnBg(e){if(e.target===document.getElementById('modal-overlay'))closeModal()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeCertModal()}});
+
+async function connectModalWallet(){
+  if(!window.ethereum){showMstatus('fail','MetaMask not detected. Please install MetaMask from metamask.io');return}
+  showMstatus('loading','Requesting wallet access...',modalRole==='admin');
+  try{
+    const accounts=await window.ethereum.request({method:'eth_requestAccounts'});
+    walletAddr=accounts[0];
+    const chainId=await window.ethereum.request({method:'eth_chainId'});
+    if(chainId!==SEPOLIA){
+      try{await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:SEPOLIA}]})}
+      catch(e){showMstatus('fail','Please switch MetaMask to Sepolia Testnet and try again.');return}
+    }
+    provider=new ethers.BrowserProvider(window.ethereum);
+    signer=await provider.getSigner();
+    contract=new ethers.Contract(CONTRACT,ABI,signer);
+    document.getElementById('modal-wallet-display').value=walletAddr.slice(0,6)+'...'+walletAddr.slice(-4);
+    showMstatus('ok','Connected: '+walletAddr.slice(0,6)+'...'+walletAddr.slice(-4));
+    showToast('success','Wallet Connected',walletAddr.slice(0,6)+'...'+walletAddr.slice(-4)+' connected on Sepolia');
+    window.ethereum.on('accountsChanged',a=>{walletAddr=a[0]||null;if(!walletAddr)logout()});
+  }catch(e){showMstatus('fail','Connection failed: '+e.message)}
+}
+
+async function performLogin(){
+  const usernameInput = document.getElementById('modal-user-name');
+  const username = usernameInput?.value?.trim() || (modalRole === 'admin' ? 'admin' : 'guest');
+  if(modalRole === 'admin' && !walletAddr) {
+    showMstatus('fail','Admin access requires MetaMask wallet.');return;
+  }
+  showMstatus('loading','Authenticating...',modalRole==='admin');
+  try{
+    const data=await apiCall('/auth/login',{
+      method:'POST',
+      body:JSON.stringify({username})
+    });
+    authToken=data.token;
+    currentUser=data.user;
+    localStorage.setItem('certchain_token',authToken);
+    localStorage.setItem('certchain_user',JSON.stringify(data.user));
+    showMstatus('ok','Authenticated as '+data.user.role);
+    showToast('success','Login Successful',`Welcome, ${data.user.username}!`);
+    setTimeout(()=>{closeModal();setAdminMode(modalRole==='admin');navigateTo(modalRole==='user'?'user-page':'admin-page');initPortal(modalRole)},800);
+  }catch(e){
+    showMstatus('fail',e.message);
+    showToast('error','Login Failed',e.message);
+  }
+}
+
+async function enterPortal(){
+  if(modalRole==='admin'&&!walletAddr){showMstatus('fail','Admin access requires MetaMask wallet.');return}
+  
+  // For user portal: try to connect MetaMask if available, otherwise use read-only provider
+  if(modalRole==='user'){
+    if(walletAddr && window.ethereum){
+      try{
+        provider=new ethers.BrowserProvider(window.ethereum);
+        contract=new ethers.Contract(CONTRACT,ABI,provider);
+        signer=await provider.getSigner();
+      }catch(e){
+        // Fallback to read-only provider
+        try{
+          const ro=await getROProvider();
+          provider=ro;
+          contract=new ethers.Contract(CONTRACT,ABI,ro);
+        }catch(e2){}
+      }
+    } else {
+      try{
+        const ro=await getROProvider();
+        provider=ro;
+        contract=new ethers.Contract(CONTRACT,ABI,ro);
+      }catch(e){}
+    }
+  }
+  // For admin: we already checked walletAddr above
+  
+  await performLogin();
+}
+
+// ══════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════
+function navigateTo(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
+  const t=document.getElementById(id);t.classList.remove('hidden');t.scrollTo(0,0);
+}
+function logout(){
+  authToken=null;
+  currentUser=null;
+  localStorage.removeItem('certchain_token');
+  localStorage.removeItem('certchain_user');
+  navigateTo('login-page');
+  setAdminMode(false);
+  document.getElementById('user-search').value='';
+  document.getElementById('usr-result').className='result-card';
+  document.getElementById('usr-verify-status').className='sbar';
+  if(blockInterval){clearInterval(blockInterval);blockInterval=null}
+  showToast('info','Logged Out','Session ended successfully');
+}
+
+// ══════════════════════════════════════════════════
+//  INIT PORTAL
+// ══════════════════════════════════════════════════
+async function initPortal(role){
+  try{
+    const rp=provider||await getROProvider();
+    const rc=new ethers.Contract(CONTRACT,ABI,rp);
+    const[bn,tot,adm]=await Promise.allSettled([rp.getBlockNumber(),rc.getTotalCertificates(),rc.admin()]);
+    const bNum=bn.status==='fulfilled'?bn.value:null;
+    const total=tot.status==='fulfilled'?tot.value.toString():'—';
+    const adminAddr=adm.status==='fulfilled'?adm.value:null;
+    if(role==='user'){
+      document.getElementById('usr-stat-total').textContent=total;
+      document.getElementById('usr-stat-total2').textContent=total;
+      document.getElementById('usr-stat-block').textContent=bNum?'#'+bNum.toLocaleString():'—';
+      document.getElementById('usr-stat-block2').textContent=bNum?'#'+bNum.toLocaleString():'—';
+      document.getElementById('usr-wallet-addr').textContent=walletAddr?walletAddr.slice(0,6)+'...'+walletAddr.slice(-4):'Guest';
+      updateGas(rp,'gas-display','usr-stat-gas');
+      startBlockSync(role,bNum);
+    }else{
+      document.getElementById('adm-stat-total').textContent=total;
+      document.getElementById('adm-stat-block').textContent=bNum?'#'+bNum.toLocaleString():'—';
+      const wa=walletAddr?walletAddr.slice(0,6)+'...'+walletAddr.slice(-4):'—';
+      document.getElementById('adm-wallet-addr').textContent=wa;
+      document.getElementById('adm-info-wallet').textContent=wa;
+      document.getElementById('adm-info-admin').textContent=adminAddr?adminAddr.slice(0,6)+'...'+adminAddr.slice(-4):'—';
+      updateGas(rp,'adm-gas-display',null);
+      updateGasTracker(rp);
+      startBlockSync(role,bNum);
+      loadAdminCerts();
+    }
+  }catch(e){console.warn('Init error:',e)}
+}
+
+async function loadAdminCerts(){
+  try{
+    const data=await apiCall('/certificates?limit=50');
+    const certs=data.certificates||[];
+    renderTxLogFromCerts(certs);
+  }catch(e){console.warn('Failed to load certificates:',e.message)}
+}
+
+function renderTxLogFromCerts(certs){
+  const body=document.getElementById('tx-log-body');
+  const empty=document.getElementById('tx-empty-msg');
+  if(certs.length===0){empty.style.display='block';return}
+  empty.style.display='none';
+  const existing=body.querySelectorAll('.tx-entry');
+  existing.forEach(e=>e.remove());
+  certs.slice(0,12).forEach(cert=>{
+    const el=document.createElement('div');
+    el.className='tx-entry';
+    const dateStr=new Date(cert.createdAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'});
+    el.innerHTML=`<div class="tx-dot issue"></div><div class="tx-info"><div class="tx-action">Issued: ${cert.chainId} → ${cert.recipientName}</div>${cert.blockchainTxHash?`<a class="tx-hash" href="https://sepolia.etherscan.io/tx/${cert.blockchainTxHash}" target="_blank">↗ ${cert.blockchainTxHash.slice(0,10)}...${cert.blockchainTxHash.slice(-6)}</a>`:'<span style="color:var(--text4)">Pending on-chain</span>'}</div><div class="tx-time">${dateStr}</div>`;
+    body.insertBefore(el,empty);
+  });
+}
+
+async function updateGas(rp,displayId,statId){
+  try{
+    const feeData=await rp.getFeeData();
+    if(feeData.gasPrice){
+      const gwei=Math.round(Number(feeData.gasPrice)/1e9);
+      if(displayId)document.getElementById(displayId).textContent=gwei+' gwei';
+      if(statId)document.getElementById(statId).textContent=gwei;
+    }
+  }catch(e){}
+}
+
+async function updateGasTracker(rp){
+  try{
+    const feeData=await rp.getFeeData();
+    if(feeData.gasPrice){
+      const base=Math.round(Number(feeData.gasPrice)/1e9);
+      document.getElementById('gas-slow').textContent=Math.max(1,base-2)+' Gwei';
+      document.getElementById('gas-std').textContent=base+' Gwei';
+      document.getElementById('gas-fast').textContent=(base+5)+' Gwei';
+      document.getElementById('gas-updated').textContent='Updated '+new Date().toLocaleTimeString();
+    }
+  }catch(e){}
+}
+
+function startBlockSync(role,init){
+  if(blockInterval)clearInterval(blockInterval);
+  if(init)updateBlocks(init);
+  blockInterval=setInterval(async()=>{
+    try{
+      const rp=provider||await getROProvider();
+      const b=await rp.getBlockNumber();
+      updateBlocks(b);
+      if(role==='user'){
+        document.getElementById('usr-stat-block').textContent='#'+b.toLocaleString();
+        document.getElementById('usr-stat-block2').textContent='#'+b.toLocaleString();
+        updateGas(rp,'gas-display','usr-stat-gas');
+      }else{
+        document.getElementById('adm-stat-block').textContent='#'+b.toLocaleString();
+        updateGas(rp,'adm-gas-display',null);
+        updateGasTracker(rp);
+      }
+    }catch(e){}
+  },12000);
+}
+
+function updateBlocks(b){
+  document.getElementById('bh5').textContent='#'+b.toLocaleString();
+  ['bh1','bh2','bh3','bh4'].forEach((id,i)=>{
+    const off=4-i;
+    const h=Math.random().toString(16).slice(2,6).toUpperCase();
+    const h2=Math.random().toString(16).slice(2,6).toUpperCase();
+    document.getElementById(id).textContent='0x'+h+'\n'+h2;
+    document.getElementById('bn'+(i+1)).textContent='BLOCK '+(b-off);
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  VERIFY
+// ══════════════════════════════════════════════════
+async function userVerify(){
+  const id=document.getElementById('user-search').value.trim();
+  const res=document.getElementById('usr-result');
+  if(!id){showSbar('usr-verify-status','fail','Please enter a Certificate ID to verify.');return}
+  showSbar('usr-verify-status','loading','<span class="spin"></span>&nbsp; Checking certificate database...');
+  res.className='result-card';
+  try{
+    const data=await apiCall(`/certificates/verify/${encodeURIComponent(id)}`);
+    hideSbar('usr-verify-status');
+    const cert=data.certificate;
+    const isValid=data.valid && cert.verified;
+    const issueDateStr=new Date(cert.issueDate).toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+    res.className='result-card show';
+    const statusBadge=isValid?`<div class="status-badge v">● Valid &amp; Verified</div>`:`<div class="status-badge r">⚠ Pending</div>`;
+    const hashStr=cert.blockchainTxHash || 'Pending blockchain confirmation';
+    res.innerHTML=`
+      <div class="rcard-head ${isValid?'valid':'invalid'}">
+        <div class="rcard-status">
+          <div class="rcard-icon ${isValid?'v':'r'}">${isValid?'✓':'⏳'}</div>
+          <div><div class="rcard-status-h3">${isValid?'Certificate Verified':'Certificate Pending'}</div><div class="rcard-status-p">ID: ${cert.chainId}</div></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          ${isValid?`<button onclick='openCertModal("${cert.chainId}","${cert.recipientName}","${cert.courseName}","${cert.issuer}","${issueDateStr}","${hashStr}")' style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);padding:10px 16px;border-radius:100px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;letter-spacing:1px" onmouseover="this.style.background='rgba(0,212,255,0.2)'" onmouseout="this.style.background='rgba(0,212,255,0.08)'">⎙ View Cert</button>`:''}
+          <a class="escan-btn" href="https://sepolia.etherscan.io/address/${CONTRACT}" target="_blank">Etherscan ↗</a>
+        </div>
+      </div>
+      <div class="rcard-grid">
+        <div class="rfield"><div class="rfield-lbl">Recipient Name</div><div class="rfield-val">${cert.recipientName}</div></div>
+        <div class="rfield"><div class="rfield-lbl">Course / Program</div><div class="rfield-val">${cert.courseName}</div></div>
+        <div class="rfield"><div class="rfield-lbl">Issued By</div><div class="rfield-val">${cert.issuer}</div></div>
+        <div class="rfield"><div class="rfield-lbl">Issue Date</div><div class="rfield-val">${issueDateStr}</div></div>
+        <div class="rfield"><div class="rfield-lbl">Status</div><div class="rfield-val">${statusBadge}</div></div>
+        <div class="rfield"><div class="rfield-lbl">Chain ID</div><div class="rfield-val mono">${cert.chainId}</div></div>
+      </div>`;
+    res.scrollIntoView({behavior:'smooth',block:'nearest'});
+    showToast(isValid?'success':'info',isValid?'Certificate Valid':'Certificate Found',`${cert.recipientName} · ${cert.courseName}`);
+  }catch(e){
+    showSbar('usr-verify-status','fail','Certificate not found: '+id);
+    showToast('warning','Not Found','No certificate found for ID: '+id);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  CERT PREVIEW MODAL
+// ══════════════════════════════════════════════════
+function openCertModal(id,name,course,org,date,hash){
+  document.getElementById('cv-org').textContent=org.toUpperCase();
+  document.getElementById('cv-name').textContent=name;
+  document.getElementById('cv-course').textContent=course;
+  document.getElementById('cv-date').textContent=date;
+  document.getElementById('cv-id').textContent=id;
+  document.getElementById('cv-id-footer').textContent='CERT ID: '+id;
+  document.getElementById('cv-hash').textContent='On-Chain Hash: '+hash;
+  document.getElementById('cert-modal').classList.add('show');
+}
+function closeCertModal(){document.getElementById('cert-modal').classList.remove('show')}
+
+// ══════════════════════════════════════════════════
+//  ISSUE
+// ══════════════════════════════════════════════════
+async function issueCertificate(){
+  if(!signer){showSbar('issue-status','fail','Admin wallet not connected.','adm');return}
+  const id=document.getElementById('issue-id').value.trim();
+  const name=document.getElementById('issue-name').value.trim();
+  const course=document.getElementById('issue-course').value.trim();
+  const org=document.getElementById('issue-org').value.trim();
+  if(!id||!name||!course||!org){showSbar('issue-status','fail','All fields are required.','adm');return}
+  const btn=document.getElementById('issue-btn');btn.disabled=true;
+  showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Creating certificate record...','adm');
+  showToast('info','Processing',`Creating certificate for ${name}...`);
+  try{
+    const tx=await contract.issueCertificate(id,name,course,org);
+    showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Waiting for blockchain confirmation...','adm');
+    const receipt=await tx.wait();
+    const userAddr=await signer.getAddress();
+    showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Saving to database...','adm');
+    const certData=await apiCall('/certificates',{
+      method:'POST',
+      body:JSON.stringify({
+        recipientName:name,
+        recipientEmail:'pending@temp.com',
+        courseName:course,
+        issueDate:new Date().toISOString(),
+        issuerAddress:userAddr,
+        blockchainTxHash:receipt.hash,
+        metadata:{organization:org}
+      })
+    });
+    showSbar('issue-status','ok',`✓ Issued: <strong>${certData.certificate.chainId}</strong> · <a href="https://sepolia.etherscan.io/tx/${receipt.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
+    addTxEntry('issue',`Issued: ${certData.certificate.chainId} → ${name}`,receipt.hash);
+    showToast('success','Certificate Issued',`${certData.certificate.chainId} for ${name}`);
+    ['issue-id','issue-name','issue-course'].forEach(i=>document.getElementById(i).value='');
+    loadAdminCerts();
+  }catch(e){
+    showSbar('issue-status','fail','Error: '+(e.reason||e.message));
+    showToast('error','Transaction Failed',e.reason||e.message);
+  }
+  btn.disabled=false;
+}
+
+// ══════════════════════════════════════════════════
+//  REVOKE
+// ══════════════════════════════════════════════════
+async function revokeCertificate(){
+  if(!signer){showSbar('revoke-status','fail','Admin wallet not connected.');return}
+  const id=document.getElementById('revoke-id').value.trim();
+  if(!id){showSbar('revoke-status','fail','Enter a Certificate ID to revoke.');return}
+  if(!confirm(`Permanently revoke "${id}"?\n\nThis action is IRREVERSIBLE on the blockchain.`))return;
+  showSbar('revoke-status','loading','<span class="spin"></span>&nbsp; Revoking certificate...');
+  showToast('warning','Revoking Certificate',`Processing revocation of ${id}...`);
+  try{
+    const tx=await contract.revokeCertificate(id);await tx.wait();
+    try{await apiCall(`/certificates/${id}`,{method:'DELETE'})}catch(e){console.warn('Backend delete failed:',e.message)}
+    showSbar('revoke-status','ok',`✓ Revoked: "${id}" · <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
+    addTxEntry('revoke',`Revoked: ${id}`,tx.hash);
+    showToast('success','Certificate Revoked',`${id} has been permanently revoked`);
+    document.getElementById('revoke-id').value='';
+    loadAdminCerts();
+  }catch(e){
+    showSbar('revoke-status','fail','Error: '+(e.reason||e.message));
+    showToast('error','Revocation Failed',e.reason||e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  TRANSFER
+// ══════════════════════════════════════════════════
+async function transferAdmin(){
+  if(!signer){showSbar('transfer-status','fail','Admin wallet not connected.');return}
+  const addr=document.getElementById('new-admin').value.trim();
+  if(!addr){showSbar('transfer-status','fail','Enter new admin wallet address.');return}
+  if(!confirm(`Transfer admin role to:\n${addr}\n\nYou will permanently lose admin access.`))return;
+  showSbar('transfer-status','loading','<span class="spin"></span>&nbsp; Processing transfer...');
+  try{
+    const tx=await contract.transferAdmin(addr);await tx.wait();
+    showSbar('transfer-status','ok','✓ Admin role transferred successfully.');
+    addTxEntry('transfer',`Admin transferred to ${addr.slice(0,10)}...`,tx.hash);
+    showToast('success','Admin Transferred','Role transferred. You no longer have admin access.');
+    document.getElementById('new-admin').value='';
+  }catch(e){
+    showSbar('transfer-status','fail','Error: '+(e.reason||e.message));
+    showToast('error','Transfer Failed',e.reason||e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  STATUS HELPERS
+// ══════════════════════════════════════════════════
+function showSbar(id,type,html,adm){
+  const el=document.getElementById(id);
+  el.className='sbar show '+type+(adm?' adm':'');
+  el.innerHTML=html;
+}
+function hideSbar(id){document.getElementById(id).className='sbar'}
+function showMstatus(type,text,adm){
+  const el=document.getElementById('modal-status');
+  el.className='mstatus show '+type+(adm?' adm':'');
+  const icon=type==='loading'?'<span class="spin"></span>&nbsp;':type==='ok'?'✓ ':'✗ ';
+  el.innerHTML=icon+text;
+}
+function hideMstatus(){document.getElementById('modal-status').className='mstatus'}
+
+// ══════════════════════════════════════════════════
+//  AUTO INIT WALLET
+// ══════════════════════════════════════════════════
+window.addEventListener('load',async()=>{
+  if(window.ethereum){
+    const accounts=await window.ethereum.request({method:'eth_accounts'}).catch(()=>[]);
+    if(accounts.length>0){
+      walletAddr=accounts[0];
+      provider=new ethers.BrowserProvider(window.ethereum);
+      signer=await provider.getSigner().catch(()=>null);
+      if(signer)contract=new ethers.Contract(CONTRACT,ABI,signer);
+    }
+  }
+});
+
+// 3D card tilt effect on login cards
+document.querySelectorAll('.lcard').forEach(card=>{
+  card.addEventListener('mousemove',e=>{
+    const r=card.getBoundingClientRect();
+    const x=(e.clientX-r.left)/r.width-0.5;
+    const y=(e.clientY-r.top)/r.height-0.5;
+    card.style.transform=`translateY(-8px) rotateX(${-y*8}deg) rotateY(${x*8}deg)`;
+  });
+  card.addEventListener('mouseleave',()=>{card.style.transform=''});
+});
+
+// Restore session from localStorage
+window.addEventListener('load',()=>{
+  const savedToken=localStorage.getItem('certchain_token');
+  const savedUser=localStorage.getItem('certchain_user');
+  if(savedToken&&savedUser){
+    authToken=savedToken;
+    currentUser=JSON.parse(savedUser);
+  }
+});
+</script>
+</body>
+</html>
