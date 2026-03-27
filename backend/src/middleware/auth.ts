@@ -5,10 +5,11 @@ import User, { IUser } from "../models/User.js";
 interface JwtPayload {
   id: string;
   username: string;
+  email: string;
   role: string;
 }
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: IUser;
   userId?: string;
   userRole?: string;
@@ -22,19 +23,24 @@ export const authenticate = async (
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "No token provided" });
+      res.status(401).json({ error: "Authentication token required" });
       return;
     }
 
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || "default-secret"
+      process.env.JWT_SECRET || "certchain-secret-key-change-in-production"
     ) as JwtPayload;
 
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).select("-password");
     if (!user) {
-      res.status(401).json({ error: "User not found" });
+      res.status(401).json({ error: "User not found or account deactivated" });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({ error: "Account is deactivated" });
       return;
     }
 
@@ -43,18 +49,66 @@ export const authenticate = async (
     req.userRole = decoded.role;
     next();
   } catch (error) {
-    res.status(401).json({ error: "Invalid token" });
+    if (error instanceof jwt.TokenExpiredError) {
+      res.status(401).json({ error: "Token expired" });
+      return;
+    }
+    if (error instanceof jwt.JsonWebTokenError) {
+      res.status(401).json({ error: "Invalid token" });
+      return;
+    }
+    res.status(500).json({ error: "Authentication failed" });
   }
 };
 
-export const requireAdmin = (
+export const requireRole = (...roles: string[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.userRole) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    if (!roles.includes(req.userRole)) {
+      res.status(403).json({
+        error: "Access denied",
+        message: `This action requires one of the following roles: ${roles.join(", ")}`,
+      });
+      return;
+    }
+    next();
+  };
+};
+
+export const requireAdmin = requireRole("admin");
+export const requireOrganization = requireRole("organization", "admin");
+export const requireAnyAuth = requireRole("admin", "organization", "user");
+
+export const optionalAuth = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): void => {
-  if (req.userRole !== "admin") {
-    res.status(403).json({ error: "Admin access required" });
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    next();
     return;
   }
-  next();
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "certchain-secret-key-change-in-production"
+    ) as JwtPayload;
+    User.findById(decoded.id).select("-password").then((user) => {
+      if (user) {
+        req.user = user;
+        req.userId = decoded.id;
+        req.userRole = decoded.role;
+      }
+      next();
+    });
+  } catch {
+    next();
+  }
 };

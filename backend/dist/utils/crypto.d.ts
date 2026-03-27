@@ -1,0 +1,9 @@
+export declare const generateSHA256Hash: (data: string) => string;
+export declare const generateCertificateHash: (certificateId: string, recipientName: string, recipientEmail: string, courseName: string, issueDate: Date, issuer: string, organization: string) => string;
+export declare const generateDigitalSignature: (certificateHash: string, privateKey: string) => string;
+export declare const verifyDigitalSignature: (certificateHash: string, signature: string, publicKey: string) => boolean;
+export declare const generateRandomId: (prefix?: string) => string;
+export declare const generateUniqueCertificateId: () => string;
+export declare const hashPassword: (password: string) => Promise<string>;
+export declare const verifyPassword: (password: string, storedHash: string) => Promise<boolean>;
+//# sourceMappingURL=crypto.d.ts.map

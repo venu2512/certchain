@@ -3,23 +3,75 @@ import {
   getAllCertificates,
   getCertificateById,
   createCertificate,
-  verifyCertificate,
   updateCertificate,
+  revokeCertificate,
   deleteCertificate,
+  getCertificateStats,
+  downloadCertificate,
+  verifyCertificate,
 } from "../controllers/certificateController.js";
-import { authenticate, requireAdmin } from "../middleware/auth.js";
+import { authenticate, requireAdmin, requireOrganization, requireAnyAuth } from "../middleware/auth.js";
+import { validateBody } from "../middleware/validation.js";
+import { certificateSchema, updateCertificateSchema } from "../validations/index.js";
 
 const router = Router();
 
-router.get("/verify/:chainId", verifyCertificate);
+router.get("/stats", getCertificateStats);
 
-router.use(authenticate);
+router.get(
+  "/",
+  authenticate,
+  requireAnyAuth,
+  getAllCertificates
+);
 
-router.get("/", getAllCertificates);
-router.get("/:chainId", getCertificateById);
+router.get(
+  "/verify/:certificateId",
+  verifyCertificate
+);
 
-router.post("/", requireAdmin, createCertificate);
-router.put("/:chainId", requireAdmin, updateCertificate);
-router.delete("/:chainId", requireAdmin, deleteCertificate);
+router.get(
+  "/:certificateId",
+  authenticate,
+  requireAnyAuth,
+  getCertificateById
+);
+
+router.post(
+  "/",
+  authenticate,
+  requireOrganization,
+  validateBody(certificateSchema),
+  createCertificate
+);
+
+router.put(
+  "/:certificateId",
+  authenticate,
+  requireAnyAuth,
+  validateBody(updateCertificateSchema),
+  updateCertificate
+);
+
+router.post(
+  "/:certificateId/revoke",
+  authenticate,
+  requireAdmin,
+  revokeCertificate
+);
+
+router.delete(
+  "/:certificateId",
+  authenticate,
+  requireAdmin,
+  deleteCertificate
+);
+
+router.get(
+  "/:certificateId/download",
+  authenticate,
+  requireAnyAuth,
+  downloadCertificate
+);
 
 export default router;
