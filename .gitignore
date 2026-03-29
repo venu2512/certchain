@@ -1,14 +1,15 @@
 # Node modules
-/node_modules
+node_modules/
 
 # Compilation output
-/dist
+dist/
+backend/dist/
 
 # pnpm deploy output
 /bundle
 
 # Hardhat Build Artifacts
-/artifacts
+artifacts/
 
 # Hardhat compilation (v2) support directory
 /cache
@@ -18,3 +19,18 @@
 
 # Hardhat coverage reports
 /coverage
+
+# Environment files
+.env
+.env.local
+
+# Logs
+logs/
+backend/logs/
+
+# OS files
+.DS_Store
+nul
+
+# Package lock
+package-lock.json
