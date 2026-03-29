@@ -17,14 +17,14 @@ import userRoutes from "./routes/userRoutes.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || "3001", 10);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "*",
+  origin: true,
   credentials: true,
 }));
 
@@ -60,14 +60,35 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-const startServer = async () => {
+let server: ReturnType<typeof app.listen> | null = null;
+let isServerStarted = false;
+
+const startServer = async (port: number = PORT): Promise<void> => {
+  if (isServerStarted) {
+    logger.warn("Server already started, skipping...");
+    return;
+  }
+  isServerStarted = true;
+
   try {
     await connectDB();
     logger.info("Database connected successfully");
 
-    app.listen(PORT, () => {
-      logger.info(`Server running on http://localhost:${PORT}`);
+    server = app.listen(port, () => {
+      logger.info(`Server running on http://localhost:${port}`);
       logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        const newPort = port + 1;
+        logger.warn(`Port ${port} is in use. Trying port ${newPort}...`);
+        server = null;
+        startServer(newPort);
+      } else {
+        logger.error("Server error:", err);
+        process.exit(1);
+      }
     });
   } catch (error) {
     logger.error("Failed to start server:", error);

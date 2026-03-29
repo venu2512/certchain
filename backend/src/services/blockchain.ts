@@ -1,16 +1,20 @@
 import { ethers, Contract, JsonRpcProvider, Wallet } from "ethers";
 import logger from "../config/logger.js";
 
-const CONTRACT_ADDRESS = process.env.BLOCKCHAIN_CONTRACT_ADDRESS || "0xb201ed6395741d34c4504105748e14286eFa3486";
+const CONTRACT_ADDRESS = process.env.BLOCKCHAIN_CONTRACT_ADDRESS || "0xD5cB65671dcB03476592A3096A9CB0ED52e75719";
 
 const ABI = [
   "constructor()",
   "function admin() view returns (address)",
-  "function issueCertificate(string certID, string recipientName, string courseName, string issuingOrganization) returns ()",
-  "function verifyCertificate(string certID) view returns (bool isValid, string recipientName, string courseName, string issuingOrganization, uint256 issueDate, bytes32 certHash)",
+  "function totalCertificates() view returns (uint256)",
+  "function certificates(string) view returns (bool exists, bool isValid, string recipientName, string courseName, string issuingOrganization, uint256 issueDate, bytes32 certificateHash, string metadata)",
+  "function authorizedIssuers(address) view returns (bool)",
+  "function issueCertificate(string certID, string recipientName, string courseName, string issuingOrganization, bytes32 certificateHash, string metadata) returns ()",
+  "function verifyCertificate(string certID) view returns (bool isValid, string recipientName, string courseName, string issuingOrganization, uint256 issueDate, bytes32 certHash, string metadata)",
   "function revokeCertificate(string certID) returns ()",
   "function getTotalCertificates() view returns (uint256)",
-  "function transferAdmin(address newAdmin) returns ()"
+  "function transferAdmin(address newAdmin) returns ()",
+  "function authorizeIssuer(address issuer) returns ()"
 ];
 
 export type BlockchainNetwork = "ethereum-sepolia" | "polygon-mumbai" | "ethereum-mainnet";
@@ -22,20 +26,22 @@ interface BlockchainConfig {
 }
 
 const getNetworkConfig = (network: BlockchainNetwork): BlockchainConfig => {
+  const placeholderKey = "your_ethereum_private_key_here";
+  const placeholderKey2 = "your_polygon_private_key_here";
   const configs: Record<BlockchainNetwork, BlockchainConfig> = {
     "ethereum-sepolia": {
       rpcUrl: process.env.ETHEREUM_SEPOLIA_RPC || "https://rpc.sepolia.org",
-      privateKey: process.env.ETHEREUM_PRIVATE_KEY || "",
+      privateKey: process.env.ETHEREUM_PRIVATE_KEY && !process.env.ETHEREUM_PRIVATE_KEY.includes(placeholderKey) ? process.env.ETHEREUM_PRIVATE_KEY : "",
       contractAddress: process.env.ETHEREUM_CONTRACT_ADDRESS || CONTRACT_ADDRESS,
     },
     "polygon-mumbai": {
       rpcUrl: process.env.POLYGON_MUMBAI_RPC || "https://rpc-mumbai.maticvigil.com",
-      privateKey: process.env.POLYGON_PRIVATE_KEY || "",
+      privateKey: process.env.POLYGON_PRIVATE_KEY && !process.env.POLYGON_PRIVATE_KEY.includes(placeholderKey2) ? process.env.POLYGON_PRIVATE_KEY : "",
       contractAddress: process.env.POLYGON_CONTRACT_ADDRESS || CONTRACT_ADDRESS,
     },
     "ethereum-mainnet": {
       rpcUrl: process.env.ETHEREUM_MAINNET_RPC || "https://eth.llamarpc.com",
-      privateKey: process.env.ETHEREUM_PRIVATE_KEY || "",
+      privateKey: process.env.ETHEREUM_PRIVATE_KEY && !process.env.ETHEREUM_PRIVATE_KEY.includes(placeholderKey) ? process.env.ETHEREUM_PRIVATE_KEY : "",
       contractAddress: process.env.ETHEREUM_CONTRACT_ADDRESS || CONTRACT_ADDRESS,
     },
   };

@@ -51,9 +51,10 @@ const certificateSchema = new Schema<ICertificate>(
     },
     recipientEmail: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
       lowercase: true,
+      default: "",
     },
     courseName: {
       type: String,
@@ -73,8 +74,8 @@ const certificateSchema = new Schema<ICertificate>(
       trim: true,
     },
     issuerDetails: {
-      organization: { type: String, required: true },
-      address: { type: String, required: true },
+      organization: { type: String, default: "Unknown" },
+      address: { type: String, default: "" },
       contact: { type: String },
       website: { type: String },
     },
@@ -89,7 +90,6 @@ const certificateSchema = new Schema<ICertificate>(
     certificateHash: {
       type: String,
       required: true,
-      index: true,
     },
     digitalSignature: {
       type: String,
@@ -126,7 +126,6 @@ const certificateSchema = new Schema<ICertificate>(
 certificateSchema.index({ recipientEmail: 1 });
 certificateSchema.index({ issuer: 1 });
 certificateSchema.index({ status: 1 });
-certificateSchema.index({ certificateHash: 1 });
 
 certificateSchema.pre("save", function (next) {
   if (!this.certificateId) {

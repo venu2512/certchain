@@ -16,22 +16,25 @@ export const registerSchema = z.object({
 
 export const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
+  password: z.string().optional(),
 });
 
 export const certificateSchema = z.object({
-  recipientName: z.string().min(2, "Recipient name must be at least 2 characters"),
-  recipientEmail: z.string().email("Invalid email format"),
-  courseName: z.string().min(2, "Course name must be at least 2 characters"),
-  issueDate: z.string().or(z.date()),
+  certificateId: z.string().min(1, "Certificate ID is required").optional(),
+  recipientName: z.string().min(1, "Recipient name is required"),
+  recipientEmail: z.string().email("Invalid email format").optional().or(z.literal("")),
+  courseName: z.string().min(1, "Course name is required"),
+  issueDate: z.string().or(z.date()).optional(),
   expiryDate: z.string().or(z.date()).optional(),
   issuerDetails: z.object({
-    organization: z.string().min(1, "Organization is required"),
-    address: z.string().min(1, "Organization address is required"),
+    organization: z.string().optional(),
+    address: z.string().optional(),
     contact: z.string().optional(),
-    website: z.string().url().optional(),
-  }),
+    website: z.string().optional(),
+  }).optional(),
+  issuerAddress: z.string().optional(),
   blockchainNetwork: z.string().optional(),
+  blockchainTxHash: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 

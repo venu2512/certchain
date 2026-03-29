@@ -15,6 +15,7 @@ const seedAdmin = async (): Promise<void> => {
     } else {
       const admin = new User({
         username: "admin",
+        email: "admin@certchain.local",
         password: "admin123",
         role: "admin",
       });

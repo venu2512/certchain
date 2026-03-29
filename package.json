@@ -1,0 +1,16 @@
+{
+  "name": "rise",
+  "version": "1.0.0",
+
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@types/node": "^22.19.15",
+    "ethers": "^5.8.0",
+    "hardhat": "^2.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.8.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}

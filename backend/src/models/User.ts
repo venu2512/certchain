@@ -40,8 +40,8 @@ const userSchema = new Schema<IUser>(
     },
     password: {
       type: String,
-      required: true,
-      minlength: 8,
+      required: false,
+      minlength: 0,
     },
     role: {
       type: String,
@@ -72,7 +72,7 @@ const userSchema = new Schema<IUser>(
 );
 
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
@@ -81,10 +81,10 @@ userSchema.pre("save", async function (next) {
 userSchema.methods.comparePassword = async function (
   candidatePassword: string
 ): Promise<boolean> {
+  if (!this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 
 const User = mongoose.model<IUser>("User", userSchema);

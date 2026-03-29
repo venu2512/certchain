@@ -6,7 +6,11 @@ dotenv.config();
 const connectDB = async (): Promise<void> => {
   try {
     const mongoURI = process.env.MONGODB_URI || "mongodb://localhost:27017/certchain";
-    await mongoose.connect(mongoURI);
+
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000, // fail fast if connection issue
+    });
+
     console.log("MongoDB connected successfully");
   } catch (error) {
     console.error("MongoDB connection error:", error);

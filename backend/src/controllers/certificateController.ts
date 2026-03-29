@@ -62,6 +62,7 @@ export const getCertificateById = asyncHandler(
 export const createCertificate = asyncHandler(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     const {
+      certificateId: providedCertificateId,
       recipientName,
       recipientEmail,
       courseName,
@@ -72,15 +73,15 @@ export const createCertificate = asyncHandler(
       metadata,
     } = req.body;
 
-    const certificateId = generateUniqueCertificateId();
+    const certificateId = providedCertificateId || generateUniqueCertificateId();
     const certificateHash = generateCertificateHash(
       certificateId,
       recipientName,
       recipientEmail,
       courseName,
-      new Date(issueDate),
+      new Date(issueDate || Date.now()),
       req.user?.username || "system",
-      issuerDetails.organization
+      issuerDetails?.organization || metadata?.organization || "Unknown"
     );
 
     const digitalSignature = certificateHash.substring(0, 64);
@@ -91,7 +92,7 @@ export const createCertificate = asyncHandler(
       recipientName,
       recipientEmail,
       courseName,
-      issueDate: new Date(issueDate),
+      issueDate: issueDate ? new Date(issueDate) : new Date(),
       expiryDate: expiryDate ? new Date(expiryDate) : undefined,
       issuer: req.user?.username || "system",
       issuerDetails,

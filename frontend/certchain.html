@@ -867,18 +867,25 @@ body.admin-mode #cursor-ring{border-color:rgba(255,170,0,0.4)}
 // ══════════════════════════════════════════════════
 //  API CONFIG
 // ══════════════════════════════════════════════════
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = 'http://localhost:3003/api';
 
 let authToken = localStorage.getItem('certchain_token');
 let currentUser = null;
 
 async function apiCall(endpoint, options = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'API error');
-  return data;
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'API error');
+    return data;
+  } catch (err) {
+    if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+      throw new Error('Cannot connect to server. Make sure backend is running on port 3002');
+    }
+    throw err;
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -1046,13 +1053,13 @@ function clearTxLog(){txLog=[];renderTxLog();showToast('info','Log Cleared','Tra
 // ══════════════════════════════════════════════════
 //  BLOCKCHAIN SETUP
 // ══════════════════════════════════════════════════
-const CONTRACT="0xd9145CCE52D386f254917e481eB44e9943F39138";
+const CONTRACT="0xD5cB65671dcB03476592A3096A9CB0ED52e75719";
 const SEPOLIA="0xaa36a7";
 const ABI=[
   {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
   {"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"internalType":"string","name":"certID","type":"string"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"}],"name":"issueCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
-  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"verifyCertificate","outputs":[{"internalType":"bool","name":"isValid","type":"bool"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"},{"internalType":"uint256","name":"issueDate","type":"uint256"},{"internalType":"bytes32","name":"certHash","type":"bytes32"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"},{"internalType":"bytes32","name":"certificateHash","type":"bytes32"},{"internalType":"string","name":"metadata","type":"string"}],"name":"issueCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"verifyCertificate","outputs":[{"internalType":"bool","name":"isValid","type":"bool"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"},{"internalType":"uint256","name":"issueDate","type":"uint256"},{"internalType":"bytes32","name":"certHash","type":"bytes32"},{"internalType":"string","name":"metadata","type":"string"}],"stateMutability":"view","type":"function"},
   {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"revokeCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
   {"inputs":[],"name":"getTotalCertificates","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
   {"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"transferAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"}
@@ -1136,7 +1143,6 @@ async function performLogin(){
 async function enterPortal(){
   if(modalRole==='admin'&&!walletAddr){showMstatus('fail','Admin access requires MetaMask wallet.');return}
   
-  // For user portal: try to connect MetaMask if available, otherwise use read-only provider
   if(modalRole==='user'){
     if(walletAddr && window.ethereum){
       try{
@@ -1144,7 +1150,6 @@ async function enterPortal(){
         contract=new ethers.Contract(CONTRACT,ABI,provider);
         signer=await provider.getSigner();
       }catch(e){
-        // Fallback to read-only provider
         try{
           const ro=await getROProvider();
           provider=ro;
@@ -1158,8 +1163,13 @@ async function enterPortal(){
         contract=new ethers.Contract(CONTRACT,ABI,ro);
       }catch(e){}
     }
+    closeModal();
+    setAdminMode(false);
+    navigateTo('user-page');
+    initPortal('user');
+    showToast('success','Welcome','Entered User Portal - you can verify certificates');
+    return;
   }
-  // For admin: we already checked walletAddr above
   
   await performLogin();
 }
@@ -1369,30 +1379,39 @@ async function issueCertificate(){
   const course=document.getElementById('issue-course').value.trim();
   const org=document.getElementById('issue-org').value.trim();
   if(!id||!name||!course||!org){showSbar('issue-status','fail','All fields are required.','adm');return}
+  const certHash=ethers.id(id+name+course+org);
+  const metadata=JSON.stringify({id,name,course,org,issuedAt:Date.now()});
   const btn=document.getElementById('issue-btn');btn.disabled=true;
   showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Creating certificate record...','adm');
   showToast('info','Processing',`Creating certificate for ${name}...`);
   try{
-    const tx=await contract.issueCertificate(id,name,course,org);
+    const tx=await contract.issueCertificate(id,name,course,org,certHash,metadata);
     showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Waiting for blockchain confirmation...','adm');
     const receipt=await tx.wait();
+    showToast('info','Blockchain Confirmed','Saving to database...');
     const userAddr=await signer.getAddress();
     showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Saving to database...','adm');
-    const certData=await apiCall('/certificates',{
-      method:'POST',
-      body:JSON.stringify({
-        recipientName:name,
-        recipientEmail:'pending@temp.com',
-        courseName:course,
-        issueDate:new Date().toISOString(),
-        issuerAddress:userAddr,
-        blockchainTxHash:receipt.hash,
-        metadata:{organization:org}
-      })
-    });
-    showSbar('issue-status','ok',`✓ Issued: <strong>${certData.certificate.chainId}</strong> · <a href="https://sepolia.etherscan.io/tx/${receipt.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
-    addTxEntry('issue',`Issued: ${certData.certificate.chainId} → ${name}`,receipt.hash);
-    showToast('success','Certificate Issued',`${certData.certificate.chainId} for ${name}`);
+    try{
+      const certData=await apiCall('/certificates',{
+        method:'POST',
+        body:JSON.stringify({
+          certificateId:id,
+          recipientName:name,
+          recipientEmail:'pending@temp.com',
+          courseName:course,
+          issueDate:new Date().toISOString(),
+          issuerAddress:userAddr,
+          blockchainTxHash:receipt.hash,
+          metadata:{organization:org}
+        })
+      });
+      showSbar('issue-status','ok',`✓ Issued: <strong>${certData.certificate.certificateId}</strong> · <a href="https://sepolia.etherscan.io/tx/${receipt.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
+      addTxEntry('issue',`Issued: ${certData.certificate.certificateId} → ${name}`,receipt.hash);
+      showToast('success','Certificate Issued',`${certData.certificate.certificateId} for ${name}`);
+    }catch(apiErr){
+      showSbar('issue-status','fail','Blockchain OK, DB error: '+(apiErr.message||apiErr.reason));
+      showToast('warning','Partial Success','Blockchain confirmed but database save failed');
+    }
     ['issue-id','issue-name','issue-course'].forEach(i=>document.getElementById(i).value='');
     loadAdminCerts();
   }catch(e){
