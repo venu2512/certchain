@@ -6,14 +6,12 @@ contract CertChain {
     uint256 public totalCertificates;
     
     struct Certificate {
+        string name;
+        string course;
+        string ipfsCID;
+        uint256 timestamp;
+        address issuer;
         bool exists;
-        bool isValid;
-        string recipientName;
-        string courseName;
-        string issuingOrganization;
-        uint256 issueDate;
-        bytes32 certificateHash;
-        string metadata;
     }
     
     mapping(string => Certificate) public certificates;
@@ -62,21 +60,17 @@ contract CertChain {
         string calldata certID,
         string calldata recipientName,
         string calldata courseName,
-        string calldata issuingOrganization,
-        bytes32 certificateHash,
-        string calldata metadata
+        string calldata ipfsCID
     ) external onlyAuthorized {
         require(!certificates[certID].exists, "Certificate already exists");
         
         certificates[certID] = Certificate({
-            exists: true,
-            isValid: true,
-            recipientName: recipientName,
-            courseName: courseName,
-            issuingOrganization: issuingOrganization,
-            issueDate: block.timestamp,
-            certificateHash: certificateHash,
-            metadata: metadata
+            name: recipientName,
+            course: courseName,
+            ipfsCID: ipfsCID,
+            timestamp: block.timestamp,
+            issuer: msg.sender,
+            exists: true
         });
         
         totalCertificates++;
@@ -87,61 +81,32 @@ contract CertChain {
     function verifyCertificate(
         string calldata certID
     ) external view returns (
-        bool isValid,
-        string memory recipientName,
-        string memory courseName,
-        string memory issuingOrganization,
-        uint256 issueDate,
-        bytes32 certHash,
-        string memory metadata
+        string memory name,
+        string memory course,
+        string memory ipfsCID,
+        uint256 timestamp,
+        address issuer,
+        bool exists
     ) {
         Certificate memory cert = certificates[certID];
         require(cert.exists, "Certificate does not exist");
         
         return (
-            cert.isValid,
-            cert.recipientName,
-            cert.courseName,
-            cert.issuingOrganization,
-            cert.issueDate,
-            cert.certificateHash,
-            cert.metadata
+            cert.name,
+            cert.course,
+            cert.ipfsCID,
+            cert.timestamp,
+            cert.issuer,
+            cert.exists
         );
-    }
-    
-    function verifyByHash(
-        bytes32 certificateHash
-    ) external view returns (
-        bool isValid,
-        string memory certID,
-        string memory recipientName,
-        string memory courseName
-    ) {
-        for (uint256 i = 0; i < totalCertificates; i++) {
-            Certificate storage cert = certificates[getCertIdByIndex(i)];
-            if (cert.certificateHash == certificateHash) {
-                return (
-                    cert.isValid,
-                    getCertIdByIndex(i),
-                    cert.recipientName,
-                    cert.courseName
-                );
-            }
-        }
-        return (false, "", "", "");
-    }
-    
-    function getCertIdByIndex(uint256 index) internal pure returns (string memory) {
-        return "";
     }
     
     function revokeCertificate(
         string calldata certID
     ) external onlyAuthorized {
         require(certificates[certID].exists, "Certificate does not exist");
-        require(certificates[certID].isValid, "Certificate already revoked");
         
-        certificates[certID].isValid = false;
+        certificates[certID].exists = false;
         
         emit CertificateRevoked(certID, msg.sender, block.timestamp);
     }
@@ -175,6 +140,6 @@ contract CertChain {
     function isCertificateValid(
         string calldata certID
     ) external view returns (bool) {
-        return certificates[certID].exists && certificates[certID].isValid;
+        return certificates[certID].exists;
     }
 }

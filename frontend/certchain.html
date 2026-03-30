@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -544,6 +545,7 @@ body.admin-mode #cursor-ring{border-color:rgba(255,170,0,0.4)}
         <div class="cert-meta"><div class="cert-meta-lbl">Network</div><div class="cert-meta-val">Ethereum Sepolia</div></div>
       </div>
       <div class="cert-hash-row" id="cv-hash">On-Chain Hash: —</div>
+      <div class="cert-ipfs-row" id="cv-ipfs" style="display:none;background:rgba(0,212,255,0.04);border:1px solid rgba(0,212,255,0.15);border-radius:10px;padding:12px 20px;font-family:var(--mono);font-size:10px;color:var(--cyan);word-break:break-all;line-height:1.8;margin-bottom:8px">IPFS CID: —</div>
     </div>
     <div class="cert-footer-row">
       <div class="cert-id-label" id="cv-id-footer">CERT ID: —</div>
@@ -867,7 +869,7 @@ body.admin-mode #cursor-ring{border-color:rgba(255,170,0,0.4)}
 // ══════════════════════════════════════════════════
 //  API CONFIG
 // ══════════════════════════════════════════════════
-const API_BASE = 'http://localhost:3003/api';
+const API_BASE = 'http://localhost:3001/api';
 
 let authToken = localStorage.getItem('certchain_token');
 let currentUser = null;
@@ -1053,20 +1055,155 @@ function clearTxLog(){txLog=[];renderTxLog();showToast('info','Log Cleared','Tra
 // ══════════════════════════════════════════════════
 //  BLOCKCHAIN SETUP
 // ══════════════════════════════════════════════════
-const CONTRACT="0xD5cB65671dcB03476592A3096A9CB0ED52e75719";
+const CONTRACT="0xD7F27afDb96AC7A0f9693617E6B7CB24066c3fE9";
 const SEPOLIA="0xaa36a7";
 const ABI=[
   {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
   {"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"internalType":"string","name":"certID","type":"string"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"},{"internalType":"bytes32","name":"certificateHash","type":"bytes32"},{"internalType":"string","name":"metadata","type":"string"}],"name":"issueCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
-  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"verifyCertificate","outputs":[{"internalType":"bool","name":"isValid","type":"bool"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"issuingOrganization","type":"string"},{"internalType":"uint256","name":"issueDate","type":"uint256"},{"internalType":"bytes32","name":"certHash","type":"bytes32"},{"internalType":"string","name":"metadata","type":"string"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"},{"internalType":"string","name":"recipientName","type":"string"},{"internalType":"string","name":"courseName","type":"string"},{"internalType":"string","name":"ipfsCID","type":"string"}],"name":"issueCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"verifyCertificate","outputs":[{"internalType":"string","name":"name","type":"string"},{"internalType":"string","name":"course","type":"string"},{"internalType":"string","name":"ipfsCID","type":"string"},{"internalType":"uint256","name":"timestamp","type":"uint256"},{"internalType":"address","name":"issuer","type":"address"},{"internalType":"bool","name":"exists","type":"bool"}],"stateMutability":"view","type":"function"},
   {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"revokeCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
-  {"inputs":[],"name":"getTotalCertificates","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"transferAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"}
+  {"inputs":[],"name":"getCertificateCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"newAdmin","type":"address"}],"name":"transferAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"string","name":"certID","type":"string"}],"name":"isCertificateValid","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"}
 ];
+
+/*
+ * =============================================================================
+ * PINATA API CONFIGURATION
+ * =============================================================================
+ * To enable PDF generation and IPFS upload, you need to:
+ * 1. Create a Pinata account at https://pinata.cloud
+ * 2. Get your API Key and Secret API Key from the Pinata dashboard
+ * 3. Replace the values below with your Pinata credentials
+ * 
+ * Get free API keys: https://app.pinata.cloud/developers/api-keys
+ * =============================================================================
+ */
+const PINATA_API_KEY = '9af0416fd43b933674be';
+const PINATA_SECRET_API_KEY = 'c2468e235baf0954ddb625415f32ce15eed2e8bd44fcd4f6224ac7769a1f1848';
+const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
 let provider=null,signer=null,contract=null,walletAddr=null,modalRole=null,blockInterval=null;
 
 async function getROProvider(){return new ethers.JsonRpcProvider('https://rpc.sepolia.org')}
+
+async function generateCertificatePDF(certId, name, course, issuer, date) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  
+  doc.setFillColor(245, 247, 250);
+  doc.rect(0, 0, pageWidth, pageHeight, 'F');
+  
+  doc.setDrawColor(0, 180, 255);
+  doc.setLineWidth(2);
+  doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
+  
+  doc.setDrawColor(0, 180, 255);
+  doc.setLineWidth(0.5);
+  doc.rect(14, 14, pageWidth - 28, pageHeight - 28);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(0, 180, 255);
+  doc.text('RISE INTERNSHIP — TAMIZAN SKILLS', pageWidth / 2, 30, { align: 'center' });
+  
+  doc.setDrawColor(0, 180, 255);
+  doc.setLineWidth(0.3);
+  const lineY = 40;
+  doc.line(pageWidth / 2 - 40, lineY, pageWidth / 2 + 40, lineY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(14);
+  doc.setTextColor(100, 100, 100);
+  doc.text('CERTIFICATE OF COMPLETION', pageWidth / 2, 55, { align: 'center' });
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(32);
+  doc.setTextColor(0, 0, 0);
+  doc.text(name, pageWidth / 2, 75, { align: 'center' });
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(100, 100, 100);
+  doc.text('has successfully completed', pageWidth / 2, 90, { align: 'center' });
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(0, 0, 0);
+  doc.text(course, pageWidth / 2, 105, { align: 'center' });
+  
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Issue Date:', pageWidth / 2 - 30, 125, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
+  doc.text(date, pageWidth / 2 + 5, 125, { align: 'left' });
+  
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Certificate ID:', pageWidth / 2 - 30, 135, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 180, 255);
+  doc.text(certId, pageWidth / 2 + 5, 135, { align: 'left' });
+  
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Issuer (Ethereum Address):', pageWidth / 2 - 40, 145, { align: 'center' });
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(0, 0, 0);
+  doc.text(issuer, pageWidth / 2, 152, { align: 'center' });
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(0, 255, 136);
+  doc.text('✓ Blockchain Verified', pageWidth / 2, pageHeight - 25, { align: 'center' });
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text('CertChain - Ethereum Sepolia Testnet', pageWidth / 2, pageHeight - 18, { align: 'center' });
+  
+  return doc;
+}
+
+async function uploadToIPFS(pdfBlob, certId) {
+  const formData = new FormData();
+  formData.append('file', pdfBlob, `${certId}.pdf`);
+  
+  const pinataUrl = 'https://api.pinata.cloud/pinning/pinFileToIPFS';
+  
+  try {
+    const response = await fetch(pinataUrl, {
+      method: 'POST',
+      headers: {
+        'pinata_api_key': PINATA_API_KEY,
+        'pinata_secret_api_key': PINATA_SECRET_API_KEY
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`IPFS upload failed: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.IpfsHash;
+  } catch (error) {
+    console.error('IPFS upload error:', error);
+    throw error;
+  }
+}
+
+async function uploadPDFToIPFS(certId, name, course, issuer, date) {
+  const doc = await generateCertificatePDF(certId, name, course, issuer, date);
+  const pdfBlob = doc.output('blob');
+  const cid = await uploadToIPFS(pdfBlob, certId);
+  return cid;
+}
 
 // ══════════════════════════════════════════════════
 //  MODAL
@@ -1199,10 +1336,10 @@ function logout(){
 //  INIT PORTAL
 // ══════════════════════════════════════════════════
 async function initPortal(role){
-  try{
-    const rp=provider||await getROProvider();
-    const rc=new ethers.Contract(CONTRACT,ABI,rp);
-    const[bn,tot,adm]=await Promise.allSettled([rp.getBlockNumber(),rc.getTotalCertificates(),rc.admin()]);
+   try{
+     const rp=provider||await getROProvider();
+     const rc=new ethers.Contract(CONTRACT,ABI,rp);
+     const[bn,tot,adm]=await Promise.allSettled([rp.getBlockNumber(),rc.getCertificateCount(),rc.admin()]);
     const bNum=bn.status==='fulfilled'?bn.value:null;
     const total=tot.status==='fulfilled'?tot.value.toString():'—';
     const adminAddr=adm.status==='fulfilled'?adm.value:null;
@@ -1310,54 +1447,97 @@ function updateBlocks(b){
 }
 
 // ══════════════════════════════════════════════════
-//  VERIFY
-// ══════════════════════════════════════════════════
-async function userVerify(){
-  const id=document.getElementById('user-search').value.trim();
-  const res=document.getElementById('usr-result');
-  if(!id){showSbar('usr-verify-status','fail','Please enter a Certificate ID to verify.');return}
-  showSbar('usr-verify-status','loading','<span class="spin"></span>&nbsp; Checking certificate database...');
-  res.className='result-card';
-  try{
-    const data=await apiCall(`/certificates/verify/${encodeURIComponent(id)}`);
-    hideSbar('usr-verify-status');
-    const cert=data.certificate;
-    const isValid=data.valid && cert.verified;
-    const issueDateStr=new Date(cert.issueDate).toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
-    res.className='result-card show';
-    const statusBadge=isValid?`<div class="status-badge v">● Valid &amp; Verified</div>`:`<div class="status-badge r">⚠ Pending</div>`;
-    const hashStr=cert.blockchainTxHash || 'Pending blockchain confirmation';
-    res.innerHTML=`
+ //  VERIFY
+ // ══════════════════════════════════════════════════
+ async function userVerify(){
+   const id=document.getElementById('user-search').value.trim();
+   const res=document.getElementById('usr-result');
+   if(!id){showSbar('usr-verify-status','fail','Please enter a Certificate ID to verify.');return}
+   showSbar('usr-verify-status','loading','<span class="spin"></span>&nbsp; Fetching certificate from blockchain...');
+   res.className='result-card';
+   
+   let certData = null;
+   let fromChain = false;
+   
+   try{
+     const rp = provider || await getROProvider();
+     const rc = new ethers.Contract(CONTRACT, ABI, rp);
+     const result = await rc.verifyCertificate(id);
+     certData = {
+       name: result[0],
+       course: result[1],
+       ipfsCID: result[2],
+       timestamp: Number(result[3]),
+       issuer: result[4],
+       exists: result[5]
+     };
+     fromChain = true;
+   }catch(chainErr){
+     console.warn('Chain fetch failed, trying API:', chainErr.message);
+   }
+   
+   if(!certData || !certData.exists){
+     try{
+       const data=await apiCall(`/certificates/verify/${encodeURIComponent(id)}`);
+       certData = {
+         name: data.certificate.recipientName,
+         course: data.certificate.courseName,
+         ipfsCID: data.certificate.ipfsCID || '',
+         timestamp: data.certificate.issueDate ? new Date(data.certificate.issueDate).getTime() / 1000 : 0,
+         issuer: data.certificate.issuerAddress,
+         exists: data.valid && data.certificate.verified
+       };
+     }catch(apiErr){
+       showSbar('usr-verify-status','fail','Certificate not found: '+id);
+       showToast('warning','Not Found','No certificate found for ID: '+id);
+       return;
+     }
+   }
+   
+   hideSbar('usr-verify-status');
+   const isValid = certData.exists;
+   const issueDateStr = certData.timestamp ? new Date(certData.timestamp * 1000).toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'}) : 'N/A';
+   const issuerShort = certData.issuer ? certData.issuer.slice(0,6)+'...'+certData.issuer.slice(-4) : 'N/A';
+   
+   res.className='result-card show';
+   const statusBadge=isValid?`<div class="status-badge v">● Valid &amp; Verified</div>`:`<div class="status-badge r">⚠ Not Found</div>`;
+   
+   const ipfsLink = certData.ipfsCID ? 
+     `<a href="${IPFS_GATEWAY}${certData.ipfsCID}" target="_blank" style="color:var(--cyan);text-decoration:none;display:flex;align-items:center;gap:6px;">📄 View Certificate PDF ↗</a>` :
+     `<span style="color:var(--text4)">No PDF available</span>`;
+   
+   res.innerHTML=`
       <div class="rcard-head ${isValid?'valid':'invalid'}">
         <div class="rcard-status">
           <div class="rcard-icon ${isValid?'v':'r'}">${isValid?'✓':'⏳'}</div>
-          <div><div class="rcard-status-h3">${isValid?'Certificate Verified':'Certificate Pending'}</div><div class="rcard-status-p">ID: ${cert.chainId}</div></div>
+          <div><div class="rcard-status-h3">${isValid?'Certificate Verified':'Not Found'}</div><div class="rcard-status-p">ID: ${id}</div></div>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
-          ${isValid?`<button onclick='openCertModal("${cert.chainId}","${cert.recipientName}","${cert.courseName}","${cert.issuer}","${issueDateStr}","${hashStr}")' style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);padding:10px 16px;border-radius:100px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;letter-spacing:1px" onmouseover="this.style.background='rgba(0,212,255,0.2)'" onmouseout="this.style.background='rgba(0,212,255,0.08)'">⎙ View Cert</button>`:''}
+          ${isValid ? `<button onclick="viewCert('${id}','${certData.name}','${certData.course}','${issueDateStr}','${issuerShort}','${certData.ipfsCID || ''}')" style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);padding:10px 16px;border-radius:100px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;letter-spacing:1px;">🎓 View Certificate</button>` : ''}
+          ${isValid && certData.ipfsCID ? `<a href="${IPFS_GATEWAY}${certData.ipfsCID}" target="_blank" style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);padding:10px 16px;border-radius:100px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;letter-spacing:1px;text-decoration:none;" onmouseover="this.style.background='rgba(0,212,255,0.2)'" onmouseout="this.style.background='rgba(0,212,255,0.08)'">⎙ Download PDF</a>` : ''}
           <a class="escan-btn" href="https://sepolia.etherscan.io/address/${CONTRACT}" target="_blank">Etherscan ↗</a>
         </div>
       </div>
-      <div class="rcard-grid">
-        <div class="rfield"><div class="rfield-lbl">Recipient Name</div><div class="rfield-val">${cert.recipientName}</div></div>
-        <div class="rfield"><div class="rfield-lbl">Course / Program</div><div class="rfield-val">${cert.courseName}</div></div>
-        <div class="rfield"><div class="rfield-lbl">Issued By</div><div class="rfield-val">${cert.issuer}</div></div>
-        <div class="rfield"><div class="rfield-lbl">Issue Date</div><div class="rfield-val">${issueDateStr}</div></div>
-        <div class="rfield"><div class="rfield-lbl">Status</div><div class="rfield-val">${statusBadge}</div></div>
-        <div class="rfield"><div class="rfield-lbl">Chain ID</div><div class="rfield-val mono">${cert.chainId}</div></div>
-      </div>`;
-    res.scrollIntoView({behavior:'smooth',block:'nearest'});
-    showToast(isValid?'success':'info',isValid?'Certificate Valid':'Certificate Found',`${cert.recipientName} · ${cert.courseName}`);
-  }catch(e){
-    showSbar('usr-verify-status','fail','Certificate not found: '+id);
-    showToast('warning','Not Found','No certificate found for ID: '+id);
-  }
-}
+     <div class="rcard-grid">
+       <div class="rfield"><div class="rfield-lbl">Recipient Name</div><div class="rfield-val">${certData.name || 'N/A'}</div></div>
+       <div class="rfield"><div class="rfield-lbl">Course / Program</div><div class="rfield-val">${certData.course || 'N/A'}</div></div>
+       <div class="rfield"><div class="rfield-lbl">Issue Date</div><div class="rfield-val">${issueDateStr}</div></div>
+       <div class="rfield"><div class="rfield-lbl">Issuer Address</div><div class="rfield-val mono">${issuerShort}</div></div>
+       <div class="rfield"><div class="rfield-lbl">IPFS CID</div><div class="rfield-val mono" style="font-size:9px">${certData.ipfsCID || 'N/A'}</div></div>
+       <div class="rfield"><div class="rfield-lbl">Status</div><div class="rfield-val">${statusBadge}</div></div>
+     </div>`;
+   res.scrollIntoView({behavior:'smooth',block:'nearest'});
+   showToast(isValid?'success':'info',isValid?'Certificate Valid':'Not Found',`${certData.name || 'Unknown'} · ${certData.course || 'Unknown'}`);
+ }
 
 // ══════════════════════════════════════════════════
-//  CERT PREVIEW MODAL
-// ══════════════════════════════════════════════════
-function openCertModal(id,name,course,org,date,hash){
+ //  CERT PREVIEW MODAL
+ // ══════════════════════════════════════════════════
+ function viewCert(id, name, course, date, issuer, ipfsCID) {
+   openCertModal(id, name, course, 'RISE INTERNSHIP — TAMIZAN SKILLS', date, ipfsCID || 'On-chain verified', ipfsCID);
+ }
+ 
+ function openCertModal(id,name,course,org,date,hash,ipfsCID){
   document.getElementById('cv-org').textContent=org.toUpperCase();
   document.getElementById('cv-name').textContent=name;
   document.getElementById('cv-course').textContent=course;
@@ -1365,80 +1545,113 @@ function openCertModal(id,name,course,org,date,hash){
   document.getElementById('cv-id').textContent=id;
   document.getElementById('cv-id-footer').textContent='CERT ID: '+id;
   document.getElementById('cv-hash').textContent='On-Chain Hash: '+hash;
+  const ipfsRow = document.getElementById('cv-ipfs');
+  if(ipfsCID){
+    ipfsRow.style.display = 'block';
+    ipfsRow.textContent = 'IPFS CID: ' + ipfsCID;
+  } else {
+    ipfsRow.style.display = 'none';
+  }
   document.getElementById('cert-modal').classList.add('show');
 }
 function closeCertModal(){document.getElementById('cert-modal').classList.remove('show')}
 
 // ══════════════════════════════════════════════════
-//  ISSUE
-// ══════════════════════════════════════════════════
-async function issueCertificate(){
-  if(!signer){showSbar('issue-status','fail','Admin wallet not connected.','adm');return}
-  const id=document.getElementById('issue-id').value.trim();
-  const name=document.getElementById('issue-name').value.trim();
-  const course=document.getElementById('issue-course').value.trim();
-  const org=document.getElementById('issue-org').value.trim();
-  if(!id||!name||!course||!org){showSbar('issue-status','fail','All fields are required.','adm');return}
-  const certHash=ethers.id(id+name+course+org);
-  const metadata=JSON.stringify({id,name,course,org,issuedAt:Date.now()});
-  const btn=document.getElementById('issue-btn');btn.disabled=true;
-  showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Creating certificate record...','adm');
-  showToast('info','Processing',`Creating certificate for ${name}...`);
-  try{
-    const tx=await contract.issueCertificate(id,name,course,org,certHash,metadata);
-    showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Waiting for blockchain confirmation...','adm');
-    const receipt=await tx.wait();
-    showToast('info','Blockchain Confirmed','Saving to database...');
-    const userAddr=await signer.getAddress();
-    showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Saving to database...','adm');
-    try{
-      const certData=await apiCall('/certificates',{
-        method:'POST',
-        body:JSON.stringify({
-          certificateId:id,
-          recipientName:name,
-          recipientEmail:'pending@temp.com',
-          courseName:course,
-          issueDate:new Date().toISOString(),
-          issuerAddress:userAddr,
-          blockchainTxHash:receipt.hash,
-          metadata:{organization:org}
-        })
-      });
-      showSbar('issue-status','ok',`✓ Issued: <strong>${certData.certificate.certificateId}</strong> · <a href="https://sepolia.etherscan.io/tx/${receipt.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
-      addTxEntry('issue',`Issued: ${certData.certificate.certificateId} → ${name}`,receipt.hash);
-      showToast('success','Certificate Issued',`${certData.certificate.certificateId} for ${name}`);
-    }catch(apiErr){
-      showSbar('issue-status','fail','Blockchain OK, DB error: '+(apiErr.message||apiErr.reason));
-      showToast('warning','Partial Success','Blockchain confirmed but database save failed');
-    }
-    ['issue-id','issue-name','issue-course'].forEach(i=>document.getElementById(i).value='');
-    loadAdminCerts();
-  }catch(e){
-    showSbar('issue-status','fail','Error: '+(e.reason||e.message));
-    showToast('error','Transaction Failed',e.reason||e.message);
-  }
-  btn.disabled=false;
-}
+ //  ISSUE
+ // ══════════════════════════════════════════════════
+ async function issueCertificate(){
+   if(!signer){showSbar('issue-status','fail','Admin wallet not connected.','adm');return}
+   const id=document.getElementById('issue-id').value.trim();
+   const name=document.getElementById('issue-name').value.trim();
+   const course=document.getElementById('issue-course').value.trim();
+   const org=document.getElementById('issue-org').value.trim();
+   if(!id||!name||!course||!org){showSbar('issue-status','fail','All fields are required.','adm');return}
+   
+   if(!PINATA_API_KEY || !PINATA_SECRET_API_KEY){
+     showSbar('issue-status','fail','Pinata API keys not configured. Please set PINATA_API_KEY and PINATA_SECRET_API_KEY in the frontend.','adm');
+     showToast('error','Configuration Error','Pinata API keys not set');
+     return;
+   }
+   
+   const btn=document.getElementById('issue-btn');btn.disabled=true;
+   const userAddr=await signer.getAddress();
+   const issueDate=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+   
+   showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Generating PDF certificate...','adm');
+   showToast('info','Processing',`Generating PDF certificate for ${name}...`);
+   
+   let ipfsCID = '';
+   try{
+     showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Uploading to IPFS (Pinata)...','adm');
+     showToast('info','IPFS Upload','Uploading certificate to IPFS...');
+     ipfsCID = await uploadPDFToIPFS(id, name, course, userAddr, issueDate);
+     showToast('success','IPFS Uploaded',`Certificate stored on IPFS with CID: ${ipfsCID.substring(0, 20)}...`);
+   }catch(ipfsErr){
+     showSbar('issue-status','fail','IPFS upload failed: '+(ipfsErr.message||ipfsErr.reason));
+     showToast('error','IPFS Failed',ipfsErr.message||'Could not upload to IPFS');
+     btn.disabled=false;
+     return;
+   }
+   
+   showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Issuing on blockchain...','adm');
+   showToast('info','Blockchain','Issuing certificate on Ethereum...');
+   const contractWithSigner = new ethers.Contract(CONTRACT, ABI, signer);
+   try{
+     const tx=await contractWithSigner.issueCertificate(id,name,course,ipfsCID);
+     showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Waiting for blockchain confirmation...','adm');
+     const receipt=await tx.wait();
+     showToast('info','Blockchain Confirmed','Saving to database...');
+     showSbar('issue-status','loading','<span class="spin"></span>&nbsp; Saving to database...','adm');
+     try{
+       const certData=await apiCall('/certificates',{
+         method:'POST',
+         body:JSON.stringify({
+           certificateId:id,
+           recipientName:name,
+           recipientEmail:'pending@temp.com',
+           courseName:course,
+           issueDate:new Date().toISOString(),
+           issuerAddress:userAddr,
+           blockchainTxHash:receipt.hash,
+           ipfsCID:ipfsCID,
+           metadata:{organization:org}
+         })
+       });
+       showSbar('issue-status','ok',`✓ Issued: <strong>${certData.certificate.certificateId}</strong> · <a href="https://sepolia.etherscan.io/tx/${receipt.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
+       addTxEntry('issue',`Issued: ${certData.certificate.certificateId} → ${name}`,receipt.hash);
+       showToast('success','Certificate Issued',`${certData.certificate.certificateId} for ${name}`);
+     }catch(apiErr){
+       showSbar('issue-status','fail','Blockchain OK, DB error: '+(apiErr.message||apiErr.reason));
+       showToast('warning','Partial Success','Blockchain confirmed but database save failed');
+     }
+     ['issue-id','issue-name','issue-course'].forEach(i=>document.getElementById(i).value='');
+     loadAdminCerts();
+   }catch(e){
+     showSbar('issue-status','fail','Error: '+(e.reason||e.message));
+     showToast('error','Transaction Failed',e.reason||e.message);
+   }
+   btn.disabled=false;
+ }
 
 // ══════════════════════════════════════════════════
 //  REVOKE
 // ══════════════════════════════════════════════════
 async function revokeCertificate(){
-  if(!signer){showSbar('revoke-status','fail','Admin wallet not connected.');return}
-  const id=document.getElementById('revoke-id').value.trim();
-  if(!id){showSbar('revoke-status','fail','Enter a Certificate ID to revoke.');return}
-  if(!confirm(`Permanently revoke "${id}"?\n\nThis action is IRREVERSIBLE on the blockchain.`))return;
-  showSbar('revoke-status','loading','<span class="spin"></span>&nbsp; Revoking certificate...');
-  showToast('warning','Revoking Certificate',`Processing revocation of ${id}...`);
-  try{
-    const tx=await contract.revokeCertificate(id);await tx.wait();
-    try{await apiCall(`/certificates/${id}`,{method:'DELETE'})}catch(e){console.warn('Backend delete failed:',e.message)}
-    showSbar('revoke-status','ok',`✓ Revoked: "${id}" · <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
-    addTxEntry('revoke',`Revoked: ${id}`,tx.hash);
-    showToast('success','Certificate Revoked',`${id} has been permanently revoked`);
-    document.getElementById('revoke-id').value='';
-    loadAdminCerts();
+   if(!signer){showSbar('revoke-status','fail','Admin wallet not connected.');return}
+   const id=document.getElementById('revoke-id').value.trim();
+   if(!id){showSbar('revoke-status','fail','Enter a Certificate ID to revoke.');return}
+   if(!confirm(`Permanently revoke "${id}"?\n\nThis action is IRREVERSIBLE on the blockchain.`))return
+   const contractWithSigner = new ethers.Contract(CONTRACT, ABI, signer);
+   showSbar('revoke-status','loading','<span class="spin"></span>&nbsp; Revoking certificate...');
+   showToast('warning','Revoking Certificate',`Processing revocation of ${id}...`);
+   try{
+     const tx=await contractWithSigner.revokeCertificate(id);await tx.wait();
+     try{await apiCall(`/certificates/${id}`,{method:'DELETE'})}catch(e){console.warn('Backend delete failed:',e.message)}
+     showSbar('revoke-status','ok',`✓ Revoked: "${id}" · <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank" style="color:inherit">View TX ↗</a>`);
+     addTxEntry('revoke',`Revoked: ${id}`,tx.hash);
+     showToast('success','Certificate Revoked',`${id} has been permanently revoked`);
+     document.getElementById('revoke-id').value='';
+     loadAdminCerts();
   }catch(e){
     showSbar('revoke-status','fail','Error: '+(e.reason||e.message));
     showToast('error','Revocation Failed',e.reason||e.message);
@@ -1449,13 +1662,14 @@ async function revokeCertificate(){
 //  TRANSFER
 // ══════════════════════════════════════════════════
 async function transferAdmin(){
-  if(!signer){showSbar('transfer-status','fail','Admin wallet not connected.');return}
-  const addr=document.getElementById('new-admin').value.trim();
-  if(!addr){showSbar('transfer-status','fail','Enter new admin wallet address.');return}
-  if(!confirm(`Transfer admin role to:\n${addr}\n\nYou will permanently lose admin access.`))return;
-  showSbar('transfer-status','loading','<span class="spin"></span>&nbsp; Processing transfer...');
-  try{
-    const tx=await contract.transferAdmin(addr);await tx.wait();
+   if(!signer){showSbar('transfer-status','fail','Admin wallet not connected.');return}
+   const addr=document.getElementById('new-admin').value.trim();
+   if(!addr){showSbar('transfer-status','fail','Enter new admin wallet address.');return}
+   if(!confirm(`Transfer admin role to:\n${addr}\n\nYou will permanently lose admin access.`))return
+   const contractWithSigner = new ethers.Contract(CONTRACT, ABI, signer);
+   showSbar('transfer-status','loading','<span class="spin"></span>&nbsp; Processing transfer...');
+   try{
+     const tx=await contractWithSigner.transferAdmin(addr);await tx.wait();
     showSbar('transfer-status','ok','✓ Admin role transferred successfully.');
     addTxEntry('transfer',`Admin transferred to ${addr.slice(0,10)}...`,tx.hash);
     showToast('success','Admin Transferred','Role transferred. You no longer have admin access.');

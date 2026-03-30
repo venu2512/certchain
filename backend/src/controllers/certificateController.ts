@@ -71,6 +71,9 @@ export const createCertificate = asyncHandler(
       issuerDetails,
       blockchainNetwork,
       metadata,
+      issuerAddress,
+      blockchainTxHash,
+      ipfsCID,
     } = req.body;
 
     const certificateId = providedCertificateId || generateUniqueCertificateId();
@@ -94,11 +97,13 @@ export const createCertificate = asyncHandler(
       courseName,
       issueDate: issueDate ? new Date(issueDate) : new Date(),
       expiryDate: expiryDate ? new Date(expiryDate) : undefined,
-      issuer: req.user?.username || "system",
+      issuer: issuerAddress || req.user?.username || "system",
       issuerDetails,
       certificateHash,
       digitalSignature,
       blockchainNetwork: blockchainNetwork || "ethereum-sepolia",
+      blockchainTxHash: blockchainTxHash,
+      ipfsCid: ipfsCID,
       status: "active",
       metadata: metadata || {},
     });
